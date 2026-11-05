@@ -17,6 +17,17 @@
   const COND_RATE = 0.055;
   const CARRY = { meat: 16, fish: 10, wild: 8, wood: 12 };
   const FOOD_KINDS = ['maize', 'meat', 'fish', 'wild'];
+  const HUNT_LABEL = {
+    deer: ['Setting out to hunt deer', 'Tracking deer in the forest'],
+    elk: ['Setting out after elk', 'Stalking elk in the oak openings'],
+    bison: ['Setting out after the bison herd', 'Stalking bison on the prairie'],
+    bear: ['Setting out after a bear', 'Tracking a black bear'],
+    turkey: ['Going to hunt turkeys', 'Calling wild turkeys at the forest edge'],
+    rabbit: ['Going to set snares', 'Setting snares for rabbits'],
+    duck: ['Going to hunt waterfowl', 'Hunting ducks among the reeds'],
+    goose: ['Going to hunt geese', 'Hunting geese on the river'],
+  };
+  const HUNT_P = { deer: 0.072, elk: 0.03, bison: 0.038, bear: 0.022, turkey: 0.12, rabbit: 0.22, duck: 0.18, goose: 0.13 };
   const FOOD_LABEL = { maize: 'Maize, beans & squash', meat: 'Dried meat', fish: 'Dried fish', wild: 'Wild foods' };
   TM.FOOD_LABEL = FOOD_LABEL;
 
@@ -56,17 +67,17 @@
       this.today = this.blankDay();
       this.yesterday = null;
       this.dogs = [];
-      this.deerGroups = [];
-      this.bison = [];
+      this.ball = null;
       this.warned = {};
       this.racks = { village: [], camp: [] };
       this.hideFrames = { village: [], camp: [] };
       this.c = this.calendar();
+      this.seed = opts.seed;
       this.init();
     }
 
     blankDay() {
-      return { food: 0, foodEaten: 0, wood: 0, woodBurned: 0, hides: 0, deer: 0, bison: 0, fish: 0, harvest: 0, maize: 0, meat: 0, wild: 0 };
+      return { food: 0, foodEaten: 0, wood: 0, woodBurned: 0, hides: 0, deer: 0, bison: 0, fish: 0, harvest: 0, maize: 0, meat: 0, wild: 0, kills: {}, pelts: 0 };
     }
 
     calendar() {
@@ -114,6 +125,7 @@
         wood: this.woodBurnPerDay(s) * [8, 10, 9, 7][s] * this.diff.stores,
         hides: Math.round(this.people.length * 0.18),
         rawHides: 6,
+        pelts: 0,
         goods: Math.round(this.people.length * 0.3),
       };
       // the fields
@@ -129,21 +141,10 @@
         const b = rng.pick(homes);
         this.dogs.push({ x: b.door.x + 0.5 + rng.range(-1, 1), y: b.door.y + 0.5 + rng.range(-1, 1), home: b, tx: 0, ty: 0, t: 0, state: 'idle', dir: 1, wp: 0, col: rng.pick(dogCols), col2: rng.pick(dogCols), path: null, pi: 0, follow: null, size: rng.range(0.85, 1.1), speed: 0.9 });
       }
-      const deerSpots = W.spots.deer;
-      for (let g = 0; g < 4 && deerSpots.length; g++) {
-        const i = rng.pick(deerSpots);
-        const grp = { cx: (i % W.N) + 0.5, cy: ((i / W.N) | 0) + 0.5, tx: 0, ty: 0, moveT: rng.range(0, 6), members: [] };
-        grp.tx = grp.cx; grp.ty = grp.cy;
-        const k = rng.int(3, 5);
-        for (let m = 0; m < k; m++) grp.members.push(this.newAnimal(grp.cx, grp.cy, 2, m === 0));
-        this.deerGroups.push(grp);
-      }
-      const br = W.bisonRange;
-      this.herd = { cx: rng.range(br.x0 + 3, br.x1 - 3), cy: rng.range(br.y0 + 15, br.y1 - 15), tx: 0, ty: 0, moveT: 0 };
-      this.herd.tx = this.herd.cx; this.herd.ty = this.herd.cy;
-      const nb = rng.int(18, 26);
-      for (let m = 0; m < nb; m++) this.bison.push(this.newAnimal(this.herd.cx, this.herd.cy, 5, rng.chance(0.4)));
-
+      // the living land, the culture of the people and the newcomers
+      this.nature = new TM.Nature(this, this.seed);
+      this.culture = new TM.Culture(this, this.seed);
+      this.colony = new TM.Colony(this, this.seed);
       this.rollWeather();
       this.councilDay = this.c.dom === 1;
       this.lastDawn = this.hour >= 6 ? this.day : -1;
@@ -153,12 +154,6 @@
     }
 
     nationName() { return this.settings.nationName || 'People'; }
-
-    newAnimal(cx, cy, spread, male) {
-      const rng = this.rng;
-      const x = cx + rng.range(-spread, spread), y = cy + rng.range(-spread, spread);
-      return { x, y, tx: x, ty: y, t: rng.range(0, 3), dir: rng.chance(0.5) ? 1 : -1, wp: 0, moving: false, male, size: rng.range(0.85, 1.15) };
-    }
 
     initPerson(p) {
       const rng = this.rng;
@@ -283,7 +278,7 @@
       const dH = (dt * 24) / C.DAY_SECONDS;
       const prevHour = this.hour;
       this.hour += dH;
-      this.eat((this.needPerDay() * dH) / 24);
+      this.eat((this.needPerDay() * dH * (this.day < this.culture.flags.ration ? 0.85 : 1)) / 24);
       const burn = (this.woodBurnPerDay() * dH) / 24;
       const burned = Math.min(this.stores.wood, burn);
       this.stores.wood -= burned;
@@ -293,18 +288,36 @@
         this.endDay();
       }
       if (prevHour < 6 && this.hour >= 6 && this.lastDawn !== this.day) { this.lastDawn = this.day; this.dawn(); }
-      if (this.councilDay && prevHour < 9 && this.hour >= 9) this.emit('The council gathers in the council lodge.', 'council');
+      if (this.councilDay && prevHour < 9 && this.hour >= 9) {
+        this.callCouncil(false);
+      }
+      // urgent matters are brought to the council at once
+      if (Math.floor(prevHour) !== Math.floor(this.hour) && !this.culture.debate) this.callCouncil(true);
       for (let k = 0; k < this.people.length; k++) this.updatePerson(this.people[k], dt, dH);
       for (const d of this.dogs) this.updateDog(d, dt);
-      this.updateWildlife(dt, dH);
+      this.nature.update(dt, dH);
+      this.colony.update(dt, dH);
+      this.updateBall(dt);
+    }
+
+    // the council takes up a matter: the interface opens a debate, or it decides by itself
+    callCouncil(urgentOnly) {
+      const cul = this.culture;
+      if (cul.debate || cul.ended) return;
+      const is = cul.pickIssue();
+      if (!is || (urgentOnly && is.priority < 9)) return;
+      if (this.onIssue) this.onIssue(is);
+      else { cul.openDebate(is); cul.resolveDebate(); }
     }
 
     endDay() {
       const t = this.today;
       const bits = [];
-      if (t.deer) bits.push(`${t.deer} deer`);
-      if (t.bison) bits.push(`${t.bison} bison`);
-      if (bits.length) this.emit(`Hunters brought in ${bits.join(' and ')}.`, 'hunt');
+      for (const [k, one, many] of [['deer', 'deer', 'deer'], ['elk', 'elk', 'elk'], ['bison', 'bison', 'bison'], ['bear', 'bear', 'bears'], ['turkey', 'turkey', 'turkeys'], ['goose', 'goose', 'geese'], ['duck', 'duck', 'ducks'], ['rabbit', 'rabbit', 'rabbits']]) {
+        if (t.kills && t.kills[k]) bits.push(`${t.kills[k]} ${t.kills[k] === 1 ? one : many}`);
+      }
+      if (bits.length) this.emit(`Hunters brought in ${bits.length > 1 ? bits.slice(0, -1).join(', ') + ' and ' + bits[bits.length - 1] : bits[0]}.`, 'hunt');
+      if (t.pelts >= 1) this.emit(`Trappers took ${Math.round(t.pelts)} beaver and fox pelts.`, 'hunt');
       if (this.crop.phase === 'harvest' || this.crop.phase === 'frost') {
         const pct = this.crop.potential > 0 ? Math.round((100 * this.crop.harvested) / this.crop.potential) : 100;
         if (t.harvest > 1) this.emit(`The harvest is ${pct}% gathered in.`, 'farm');
@@ -322,6 +335,10 @@
       this.councilDay = c.dom === 1;
       this.rollWeather();
       if (c.season !== old.season || c.moon !== old.moon) this.newMoon(old);
+      this.nature.daily();
+      this.colony.daily();
+      this.culture.daily();
+      this.culture.onNewDay();
       // weeds, pests and weather work against the crop while it grows
       if (this.crop.phase === 'prep' || this.crop.phase === 'growing') {
         this.crop.condition = Math.max(0.05, this.crop.condition - 0.01);
@@ -430,14 +447,15 @@
       const infants = new Set();
       for (const p of this.people) if (p.role === 'infant' && p.age < 2) infants.add(p.carrier);
       for (const p of this.people.slice()) {
-        let d = hungry ? -9 : lean ? -1.5 : 3;
+        let d = hungry ? -6 : lean ? -1.5 : 3;
         if (cold) d -= 7;
-        if (p.sick > 0) { d -= 3; p.sick = Math.max(0, p.sick - 1); if (p.sick === 0) p.recovered = true; }
+        if (this.day < this.culture.flags.ration) d -= 1;
+        if (p.sick > 0) { d -= p.severe ? 8 : 3; p.sick = Math.max(0, p.sick - 1); if (p.sick === 0) { p.recovered = true; p.severe = false; } }
         if ((p.age > 65 || p.age < 3) && d < 0) d *= 1.4;
         p.health = U.clamp(p.health + d, 0, 100);
         // illness
         if (!p.sick) {
-          const base = 0.0035 * diff.illness * ILL_SEASON[s] * (p.health < 50 ? 2 : 1) * (p.age < 3 || p.age > 65 ? 1.6 : 1);
+          const base = 0.0035 * diff.illness * ILL_SEASON[s] * (p.health < 50 ? 2 : 1) * (p.age < 3 || p.age > 65 ? 1.6 : 1) * this.culture.illnessMul();
           if (rng.next() < base) {
             p.sick = rng.int(2, 5);
             if (p.role !== 'infant') this.emit(`${p.name} has fallen ill.`, 'health', p.id);
@@ -448,6 +466,7 @@
         if (p.age > 60) risk += (p.age - 60) * 0.00022;
         if (p.health < 25) risk += (25 - p.health) * 0.004;
         if (p.sick > 0) risk += 0.0015 * diff.illness;
+        if (p.severe) risk += (p.age < 3 || p.age > 60 ? 0.03 : 0.007) * diff.illness;
         if (p.health <= 0 || rng.next() < risk) { this.die(p); continue; }
         // births
         if (p.sex === 'F' && p.age >= 17 && p.age <= 40 && p.spouse && this.byId.has(p.spouse) && !infants.has(p.id)) {
@@ -487,7 +506,7 @@
       this.emit(`A ${sex === 'F' ? 'daughter' : 'son'}, ${p.name} (“${p.meaning}”), was born to ${mother.name} of the ${clan ? clan.name : ''} Clan.`, 'birth', p.id);
     }
 
-    die(p) {
+    die(p, cause) {
       const i = this.people.indexOf(p);
       if (i < 0) return;
       this.people.splice(i, 1);
@@ -506,8 +525,9 @@
       for (const d of this.dogs) if (d.follow === p) d.follow = null;
       const clan = TM.CLANS.find((c) => c.id === p.clan);
       const who = p.role === 'infant' ? `The infant ${p.name}` : p.role === 'elder' ? `${p.name}, an elder of the ${clan ? clan.name : ''} Clan,` : `${p.name} of the ${clan ? clan.name : ''} Clan`;
-      this.emit(`${who} has passed on, at ${p.age === 0 ? 'less than a year' : p.age + (p.age === 1 ? ' year' : ' years')}.`, 'death');
+      this.emit(cause ? `${who} ${cause}, at ${p.age} years.` : `${who} has passed on, at ${p.age === 0 ? 'less than a year' : p.age + (p.age === 1 ? ' year' : ' years')}.`, 'death');
       p.dead = true;
+      if (p.title && this.culture) this.culture.onDeath(p);
       if (this.onDeath) this.onDeath(p);
     }
 
@@ -572,6 +592,7 @@
       const h = this.hour, plan = p.plan;
       plan.length = 0;
       p.step = null;
+      if (this.colony.alarm && p.band === 'village') return this.planAlarm(p);
       if (p.sick > 0) {
         p.planKind = 'rest';
         this.goHome(p, plan, 'Going home to rest');
@@ -584,6 +605,8 @@
         plan.push({ k: 'deposit' }, { k: 'enter' }, { k: 'stay', until: 'wake', label: 'Sleeping' });
         return;
       }
+      const G = this.culture.gathering;
+      if (G && h >= G.start - 0.6 && h < G.end && p.role !== 'infant') return this.planGathering(p, G);
       const slot = h >= 12 && h < 13 ? 1 : h >= 18 && h < 19.3 ? 2 : 0;
       if (slot && p.lastMeal !== this.day * 3 + slot) {
         p.lastMeal = this.day * 3 + slot;
@@ -661,6 +684,87 @@
       plan.push({ k: 'work', act: story ? 'story' : 'social', anim: story ? 'tell' : 'sit', dur, face: { x: fx, y: fy }, label: story ? 'Telling stories by the fire' : 'Talking by the fire' });
     }
 
+    // soldiers are coming: the young men defend, everyone else takes refuge by the river
+    planAlarm(p) {
+      const W = this.W, rng = this.rng, plan = p.plan, m = this.colony.militia;
+      const warrior = p.sex === 'M' && p.age >= 17 && p.age <= 48 && p.health > 55 && !p.sick;
+      if (warrior && m) {
+        p.planKind = 'defend';
+        const t = m.target;
+        const ang = Math.atan2(t.y - W.PCY, t.x - W.PCX);
+        const s = this.snapWalk(W.PCX + Math.cos(ang) * W.palR * 0.55 + rng.range(-2.5, 2.5), W.PCY + Math.sin(ang) * W.palR * 0.55 + rng.range(-2.5, 2.5));
+        const gun = this.culture.flags.guns > (p.look.adopt || 0.5);
+        if (s) plan.push({ k: 'go', x: s.x, y: s.y, run: true, label: 'Running to defend the village', tool: gun ? 'musket' : 'bow' });
+        plan.push({ k: 'work', act: 'defend', anim: 'aim', dur: 0.8, label: 'Defending the village', face: { x: t.x, y: t.y } });
+        return;
+      }
+      p.planKind = 'flee';
+      const L = W.landing;
+      const s = this.snapWalk(L.x + rng.range(-3, 3), L.y + rng.range(-6, 6)) || this.snapWalk(W.PCX - 8, W.PCY);
+      if (s) plan.push({ k: 'go', x: s.x, y: s.y, run: true, label: 'Fleeing from the soldiers' });
+      plan.push({ k: 'work', act: 'hide', anim: 'sit', dur: 0.8, label: 'Sheltering by the river until the soldiers are gone' });
+    }
+
+    // a gathering of the whole nation on the village plaza
+    planGathering(p, G) {
+      const W = this.W, rng = this.rng, plan = p.plan;
+      p.planKind = 'gathering';
+      const dur = Math.max(0.3, G.end - this.hour);
+      const name = G.g.name;
+      if (G.kind === 'ball') {
+        const f = this.ballField();
+        const player = (p.role === 'youth' || (p.role === 'adult' && p.age < 34)) && rng.chance(0.65);
+        if (player) {
+          const s = this.ringSpot(f.x, f.y, 0.5, f.r) || f;
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to the ball game', tool: 'stick' });
+          plan.push({ k: 'work', act: 'ball', anim: 'run', dur, label: 'Playing in the great ball game', tool: 'stick', team: p.id % 2 });
+        } else {
+          const s = this.ringSpot(f.x, f.y, f.r + 1.2, f.r + 2.8) || f;
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to watch the ball game' });
+          plan.push({ k: 'work', act: 'watch', anim: p.role === 'child' ? 'play' : 'guard', dur, label: 'Cheering at the ball game', face: f });
+        }
+        return;
+      }
+      const fx = W.PCX, fy = W.PCY;
+      if (G.kind === 'dance' && (p.role === 'adult' || p.role === 'youth' || (p.role === 'child' && rng.chance(0.5)))) {
+        const r = 2.2 + rng.next() * 1.3, a = rng.range(0, Math.PI * 2);
+        plan.push({ k: 'go', x: fx + Math.cos(a) * r, y: fy + Math.sin(a) * r, label: `Going to the ${name}` });
+        plan.push({ k: 'work', act: 'dance', anim: 'dance', dur, r, ang: a, label: `Dancing at the ${name}` });
+        return;
+      }
+      const s = this.ringSpot(fx, fy, G.kind === 'dance' ? 3.8 : 1.4, G.kind === 'dance' ? 4.8 : 3.6);
+      const tell = p.role === 'elder' && (G.kind === 'stories' ? rng.chance(0.5) : rng.chance(0.3));
+      if (s) plan.push({ k: 'go', x: s.x, y: s.y, label: `Going to the ${name}` });
+      plan.push({ k: 'work', act: tell ? 'story' : 'listen', anim: tell ? 'tell' : 'sit', dur, face: { x: fx, y: fy }, label: tell ? (G.kind === 'stories' ? 'Telling the old stories' : 'Singing and keeping the drum beat') : G.kind === 'stories' ? 'Listening to the midwinter stories' : 'Watching the dancers' });
+    }
+    ballField() {
+      if (!this._field) {
+        const W = this.W;
+        const s = this.snapWalk(W.PCX - 7, W.PCY + 2) || { x: W.PCX - 5, y: W.PCY };
+        this._field = { x: s.x, y: s.y, r: 3.2 };
+      }
+      return this._field;
+    }
+    updateBall(dt) {
+      const G = this.culture.gathering;
+      const on = G && G.kind === 'ball' && this.hour >= G.start && this.hour < G.end;
+      if (!on) { this.ball = null; return; }
+      const f = this.ballField();
+      if (!this.ball) this.ball = { x: f.x, y: f.y, tx: f.x, ty: f.y, t: 0, z: 0 };
+      const b = this.ball, rng = this.rng;
+      b.t -= dt;
+      if (b.t <= 0) {
+        b.t = rng.range(0.6, 1.8);
+        const a = rng.range(0, Math.PI * 2), r = rng.range(0, f.r);
+        b.tx = f.x + Math.cos(a) * r; b.ty = f.y + Math.sin(a) * r;
+        b.flight = 0;
+      }
+      const dx = b.tx - b.x, dy = b.ty - b.y, d = Math.hypot(dx, dy);
+      if (d > 0.02) { const st = Math.min(d, dt * 4); b.x += (dx / d) * st; b.y += (dy / d) * st; }
+      b.flight = (b.flight || 0) + dt;
+      b.z = d > 0.1 ? Math.sin(Math.min(1, b.flight * 1.4) * Math.PI) * 14 : 0;
+    }
+
     pickActivity(p) {
       const rng = this.rng, c = this.c, s = c.season;
       const occ = TM.OCCUPATIONS[p.occupation] || {};
@@ -668,12 +772,16 @@
       const winter = s === 3;
       const farmOk = this.farmOpen();
       const guardOk = (s === 1 && c.moon >= 1) || (s === 2 && c.moon === 0 && this.harvestLeft() > 0);
-      const woodLow = this.stores.wood < this.woodBurnPerDay() * 4 ? 2.2 : 1;
+      const woodDays = this.stores.wood / Math.max(1, this.woodBurnPerDay());
+      const woodLow = woodDays < 4 ? 2.2 : woodDays > 25 ? 0.25 : woodDays > 12 ? 0.6 : 1;
       const harvest = this.harvestNow() && this.harvestLeft() > 0.5;
       const W = [];
+      const cul = this.culture, col = this.colony, L = cul.lean;
+      const h = this.hour;
       if (p.role === 'child') {
-        if (p.age < 7) return rng.weighted([['play', 0.7], ['follow', 0.3]]);
-        W.push(['play', 0.45], ['water', 0.12], ['gather', winter ? 0 : 0.12 * GATHER_SEASON[s]], ['guard', guardOk ? 0.3 : 0], ['wood', 0.08 * woodLow], ['farm', harvest ? 0.15 : 0]);
+        if (cul.flags.school && col.founded && h >= 8 && h < 12 && p.age >= 6 && p.band === 'village' && rng.chance(0.75)) return 'school';
+        if (p.age < 7) return rng.weighted([['play', 0.7], ['follow', 0.3], ['listen', 0.08 * (1 - 0.5 * L.ways.v)]]);
+        W.push(['play', 0.45], ['water', 0.12], ['gather', winter ? 0 : 0.12 * GATHER_SEASON[s]], ['guard', guardOk ? 0.3 : 0], ['wood', 0.08 * woodLow], ['farm', harvest ? 0.15 : 0], ['listen', 0.14 * (1 - 0.6 * L.ways.v)]);
         return rng.weighted(W);
       }
       if (p.role === 'elder') {
@@ -681,6 +789,7 @@
         if (p.occupation === 'Fisher') W.push(['fish', 0.4 * FISH_SEASON[s]]);
         if (p.occupation === 'Healer') W.push(['heal', this.sickCount() > 0 ? 1.4 : 0], ['gather', 0.25]);
         if (p.occupation === 'Storyteller') W.push(['story', 0.3]);
+        W.push(['story', 0.12 * (1 - 0.6 * L.ways.v)], ['craft', 0.1 * Math.max(0, -L.ways.v)]);
         if (harvest) W.push(['farm', 0.2]);
         return rng.weighted(W);
       }
@@ -705,13 +814,38 @@
       if (F) W.push(['farm', farmOk && p.band === 'village' ? 0.16 : 0], ['gather', 0.08 * GATHER_SEASON[s]], ['hides', this.stores.rawHides > 2 ? 0.1 : 0], ['craft', 0.06]);
       else W.push(['hunt', 0.08 * HUNT_SEASON[s]], ['fish', p.band === 'village' ? 0.06 * FISH_SEASON[s] : 0], ['craft', 0.06], ['build', 0.02]);
       if (harvest) W.push(['farm', p.band === 'village' ? (F ? 0.45 : 0.3) : F ? 0.25 : 0.08]);
+      // the people's leanings and the times shape what they choose to do
+      if (L.ways.v < 0) W.push(['craft', 0.07 * -L.ways.v]);
+      if (L.hunt.v > 0.3) {
+        if (!F) W.push(['trap', 0.32 * L.hunt.v * (prim === 'hunt' ? 1.4 : 1)], ['hunt', 0.12 * L.hunt.v]);
+        else W.push(['hides', 0.1 * L.hunt.v]);
+      }
+      if (L.defense.v > 0.3 && !F && p.age <= 36) W.push(['train', 0.15 * L.defense.v]);
+      if (cul.flags.palisadeOrdered && cul.flags.palisade < 1 && p.band === 'village') W.push(['palisade', F ? 0.04 : prim === 'build' ? 0.9 : 0.2]);
+      if (this.W.buildings.some((b) => b.band === p.band && b.state === 'ruin' && (b.type === 'wigwam' || b.type === 'longhouse' || b.type === 'tipi'))) W.push(['build', prim === 'build' ? 1 : F ? 0.05 : 0.15]);
+      if (col.trading && col.tradeLevel > 0 && p.band === 'village') W.push(['trade', 0.12 * col.tradeLevel * (1 + 0.5 * L.ways.v)]);
+      if (this.day < cul.flags.huntPush && !F) W.push(['hunt', 0.45]);
+      const fdays = this.foodTotal() / Math.max(1, this.needPerDay());
+      if (fdays < 8) {
+        const urge = fdays < 3 ? 2.2 : 1.5;
+        for (const w of W) {
+          if (w[0] === 'hunt' || w[0] === 'fish' || w[0] === 'gather' || w[0] === 'farm' || w[0] === 'trap') w[1] *= urge;
+          else if (w[0] === 'craft' || w[0] === 'wood' || w[0] === 'build' || w[0] === 'train' || w[0] === 'trade' || w[0] === 'hides') w[1] *= 0.5;
+        }
+        W.push(['fish', 0.15 * FISH_SEASON[s]], ['gather', 0.15 * GATHER_SEASON[s]]);
+      }
       return rng.weighted(W);
     }
 
-    gatherLabel(p) {
-      const s = this.c.season;
+    gatherLabel(p, spot) {
+      const { season: s, moon: m } = this.c;
+      const W = this.W;
+      const nearMarsh = spot && Math.hypot(spot.x - W.MX, spot.y - W.MY) < 9;
       if (p.band === 'camp' && s <= 1) return 'Digging prairie turnips';
-      return ['Gathering greens and roots', 'Picking berries', 'Gathering nuts and acorns', 'Searching for winter food'][s];
+      if (s === 0) return m === 0 ? 'Collecting maple sap' : nearMarsh ? 'Gathering cattail shoots' : m === 1 ? 'Gathering morels and fiddleheads' : 'Gathering spring greens';
+      if (s === 1) return m === 0 ? 'Picking wild strawberries' : m === 1 ? 'Picking raspberries' : 'Picking chokecherries and plums';
+      if (s === 2) return nearMarsh && m === 0 ? 'Harvesting wild rice' : 'Gathering hickory nuts, walnuts and acorns';
+      return 'Searching for rose hips and winter food';
     }
     farmLabel() {
       const { season: s, moon: m } = this.c;
@@ -736,22 +870,73 @@
           break;
         }
         case 'hunt': {
-          let t = null, kind = 'deer';
-          if (band === 'camp' && this.bison.length) {
-            const b = rng.pick(this.bison);
-            t = this.snapWalk(b.x + rng.range(-3, 3), b.y + rng.range(-3, 3));
-            kind = 'bison';
-          } else if (this.deerGroups.length) {
-            const g = rng.pick(this.deerGroups);
-            t = this.snapWalk(g.cx + rng.range(-3, 3), g.cy + rng.range(-3, 3));
-          }
-          if (!t && sp.deer.length) t = this.tileSpot(rng.pick(sp.deer));
+          const nat = this.nature;
+          let kind = nat.pickHunt(band);
+          let g = nat.findGroup(kind);
+          if (!g) { kind = band === 'camp' ? 'bison' : 'deer'; g = nat.findGroup(kind); }
+          let t = g ? this.snapWalk(g.cx + rng.range(-3, 3), g.cy + rng.range(-3, 3)) : null;
+          if (!t && sp.deer.length) { t = this.tileSpot(rng.pick(sp.deer)); kind = 'deer'; }
           if (!t) return;
           const racks = this.racks[band].length ? this.racks[band] : this.racks.village;
           const rack = racks.length ? racks[rng.int(0, racks.length - 1)] : home;
-          plan.push({ k: 'go', x: t.x, y: t.y, label: kind === 'bison' ? 'Setting out after the bison herd' : 'Setting out to hunt deer', tool: 'bow' });
-          plan.push({ k: 'work', act: 'hunt', kind, anim: 'stalk', dur: this.workDur(p, t, 2.5, 4.5, true), label: kind === 'bison' ? 'Stalking bison on the prairie' : 'Tracking deer in the forest', tool: 'bow' });
-          if (rack && rack.door) plan.push({ k: 'go', ...this.doorSpot(rack, p), label: 'Returning from the hunt', tool: 'bow' }, { k: 'deposit' });
+          const tool = this.culture.flags.guns > (p.look.adopt || 0.5) ? 'musket' : 'bow';
+          const lab = HUNT_LABEL[kind] || HUNT_LABEL.deer;
+          plan.push({ k: 'go', x: t.x, y: t.y, label: lab[0], tool });
+          plan.push({ k: 'work', act: 'hunt', kind, anim: 'stalk', dur: this.workDur(p, t, 2.5, 4.5, true), label: lab[1], tool });
+          if (rack && rack.door) plan.push({ k: 'go', ...this.doorSpot(rack, p), label: 'Returning from the hunt', tool }, { k: 'deposit' });
+          break;
+        }
+        case 'trap': {
+          const nat = this.nature;
+          const bg = nat.findGroup('beaver');
+          let t = null, label = 'Setting traps for beaver';
+          if (bg && rng.chance(0.75)) t = this.snapWalk(bg.cx + rng.range(-1.5, 1.5), bg.cy + rng.range(-2, 2));
+          if (!t) { const f = nat.findGroup('fox'); if (f) { t = this.snapWalk(f.cx, f.cy); label = 'Trapping fox along the woods'; } }
+          if (!t) return;
+          plan.push({ k: 'go', x: t.x, y: t.y, label: 'Going to check the traps', tool: 'basket' });
+          plan.push({ k: 'work', act: 'trap', kind: label.includes('fox') ? 'fox' : 'beaver', anim: 'gather', dur: this.workDur(p, t, 1.5, 3, true), label });
+          if (home && home.door) plan.push({ k: 'go', ...this.doorSpot(home, p), label: 'Carrying pelts home' }, { k: 'deposit' });
+          break;
+        }
+        case 'train': {
+          const s = this.ringSpot(W.PCX, W.PCY, 4.6, 6.2);
+          if (!s) return;
+          const gun = this.culture.flags.guns > (p.look.adopt || 0.5);
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to practice', tool: gun ? 'musket' : 'bow' });
+          plan.push({ k: 'work', act: 'train', anim: 'aim', dur: this.workDur(p, s, 1, 2), label: gun ? 'Drilling with the musket' : 'Practicing with the bow', face: { x: W.PCX + 9, y: W.PCY - 3 } });
+          break;
+        }
+        case 'palisade': {
+          const segs = W.palisade;
+          if (!segs.length) return;
+          const k = Math.min(segs.length - 1, Math.floor(this.culture.flags.palisade * segs.length) + rng.int(0, 5));
+          const sg = segs[k];
+          const s = this.snapWalk(sg.x - Math.cos(sg.a) * 1.2, sg.y - Math.sin(sg.a) * 1.2);
+          if (!s) return;
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Carrying posts for the palisade', tool: 'axe' });
+          plan.push({ k: 'work', act: 'palisade', anim: 'chop', dur: this.workDur(p, s, 1.2, 2.5), label: 'Setting palisade posts', face: { x: sg.x, y: sg.y } });
+          break;
+        }
+        case 'trade': {
+          const s = this.ringSpot(W.PCX + 3, W.PCY + 1, 0.8, 2.6);
+          if (!s) return;
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to see the traders' });
+          plan.push({ k: 'work', act: 'trade', anim: 'talk', dur: rng.range(0.4, 0.9), label: rng.pick(['Trading hides for an iron kettle', 'Looking over the traders’ cloth and beads', 'Bargaining for a steel knife']), face: { x: W.PCX + 3, y: W.PCY + 1 } });
+          break;
+        }
+        case 'school': {
+          const s = this.ringSpot(W.PCX + 2.5, W.PCY - 3, 0.6, 1.8);
+          if (!s) return;
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to the colony teacher’s lessons' });
+          plan.push({ k: 'work', act: 'school', anim: 'sit', dur: Math.max(0.5, 12 - this.hour), label: 'Learning letters in the newcomers’ tongue', face: { x: W.PCX + 3, y: W.PCY - 3.5 } });
+          break;
+        }
+        case 'listen': {
+          const fx = band === 'camp' ? W.CCX : W.PCX, fy = band === 'camp' ? W.CCY : W.PCY;
+          const s = this.ringSpot(fx, fy, 1.4, 2.4);
+          if (!s) return;
+          plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to hear the elders' });
+          plan.push({ k: 'work', act: 'listen', anim: 'sit', dur: rng.range(0.6, 1.4), label: rng.pick(['Learning the old stories from the elders', 'Learning the names of plants and animals', 'Learning the words of our language']), face: { x: fx, y: fy } });
           break;
         }
         case 'fish': {
@@ -769,7 +954,7 @@
           if (!list.length) return;
           const s = this.tileSpot(rng.pick(list), 0.3);
           plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going out to gather', tool: 'basket' });
-          plan.push({ k: 'work', act: 'gather', anim: 'gather', dur: this.workDur(p, s, 1.2, 2.8), label: this.gatherLabel(p), tool: 'basket' });
+          plan.push({ k: 'work', act: 'gather', anim: 'gather', dur: this.workDur(p, s, 1.2, 2.8), label: this.gatherLabel(p, s), tool: 'basket' });
           if (home && home.door) plan.push({ k: 'go', ...this.doorSpot(home, p), label: 'Carrying food home', tool: 'basket' }, { k: 'deposit' });
           break;
         }
@@ -821,6 +1006,14 @@
           break;
         }
         case 'build': {
+          const ruins = W.buildings.filter((b) => b.band === band && b.state === 'ruin' && b.door);
+          if (ruins.length) {
+            const b = rng.pick(ruins);
+            const s = this.ringSpot(b.door.x + 0.5, b.door.y + 0.5, 0.2, 1) || this.doorSpot(b, p);
+            plan.push({ k: 'go', x: s.x, y: s.y, label: 'Going to rebuild a burned lodge', tool: 'axe' });
+            plan.push({ k: 'work', act: 'rebuild', target: b.id, anim: 'chop', dur: this.workDur(p, s, 1.5, 3), label: 'Rebuilding a burned lodge', tool: 'axe', face: { x: b.cx, y: b.cy } });
+            break;
+          }
           const homes = W.buildings.filter((b) => b.band === band && (b.type === 'wigwam' || b.type === 'longhouse' || b.type === 'tipi' || b.type === 'council') && b.door);
           if (!homes.length) return;
           const b = rng.pick(homes);
@@ -904,7 +1097,8 @@
         return;
       }
       p.animT += dt;
-      if (p.planKind !== 'sleep' && p.planKind !== 'rest' && this.isNight(p, this.hour)) this.decide(p);
+      if (p.planKind !== 'sleep' && p.planKind !== 'rest' && p.planKind !== 'war' && p.planKind !== 'gathering' && p.planKind !== 'flee' && this.isNight(p, this.hour)) this.decide(p);
+      if (this.colony.alarm && p.band === 'village' && p.planKind !== 'flee' && p.planKind !== 'war' && p.planKind !== 'defend') { p.plan.length = 0; p.step = null; }
       let guard = 0;
       while (!p.step && guard++ < 4) {
         if (!p.plan.length) this.decide(p);
@@ -947,10 +1141,14 @@
         case 'stay':
           if (st.until === 'wake') { if (!this.isNight(p, this.hour)) p.step = null; }
           else { st.t -= dH; if (st.t <= 0) p.step = null; }
-          if (st.act === 'craft') this.stores.goods += 0.2 * (p.skills.craft || 0.5) * dH;
+          if (st.act === 'craft') { this.stores.goods += 0.2 * (p.skills.craft || 0.5) * dH; this.culture.craftHours += dH; }
           break;
         case 'deposit':
           this.deposit(p);
+          p.step = null;
+          break;
+        case 'call':
+          st.fn();
           p.step = null;
           break;
         default:
@@ -964,6 +1162,7 @@
       if (st.k === 'work') {
         st.t = st.dur;
         p.act = st.act;
+        if (st.onStart) st.onStart();
         if (st.act === 'farm' && this.harvestNow()) p.tool = 'basket';
       } else if (st.k === 'stay') {
         st.t = st.dur || 0;
@@ -1040,48 +1239,55 @@
     produce(p, st, dH, dt) {
       const s = this.c.season, prod = this.diff.prod, sk = p.skills, rng = this.rng;
       const roleMul = p.role === 'adult' ? 1 : p.role === 'youth' ? 0.75 : p.role === 'elder' ? 0.6 : 0.45;
-      const carry = () => (p.carry = p.carry && p.carry.kind !== 'water' && p.carry.kind !== 'maize' ? p.carry : { kind: null, meat: 0, fish: 0, wild: 0, wood: 0, hides: 0 });
+      const carry = () => (p.carry = p.carry && p.carry.kind !== 'water' && p.carry.kind !== 'maize' ? p.carry : { kind: null, meat: 0, fish: 0, wild: 0, wood: 0, hides: 0, pelts: 0 });
+      const cul = this.culture;
+      const mul = cul.workMul(st.act);
       switch (st.act) {
         case 'farm': {
           if (this.harvestNow()) {
             const left = this.harvestLeft();
             if (left > 0) {
-              const a = Math.min(left, HARVEST_RATE * sk.farm * roleMul * dH * prod);
+              const a = Math.min(left, HARVEST_RATE * sk.farm * roleMul * dH * prod * mul);
               this.crop.harvested += a;
               this.addFood('maize', a);
               this.today.harvest += a;
             }
           } else if (s <= 1) {
-            this.crop.condition = Math.min(1, this.crop.condition + (COND_RATE * sk.farm * roleMul * dH * prod) / Math.max(1, this.W.fields.length));
+            this.crop.condition = Math.min(1, this.crop.condition + (COND_RATE * sk.farm * roleMul * dH * prod * mul) / Math.max(1, this.W.fields.length));
           }
           break;
         }
         case 'hunt': {
           const c = carry();
-          const pHr = (st.kind === 'bison' ? 0.034 : 0.062) * HUNT_SEASON[s] * sk.hunt * prod;
+          const S = TM.SPECIES[st.kind] || TM.SPECIES.deer;
+          const pHr = (HUNT_P[st.kind] || 0.06) * HUNT_SEASON[s] * sk.hunt * prod * cul.huntMul() * this.nature.yieldMul(st.kind);
           if (rng.next() < pHr * dH) {
-            const meat = st.kind === 'bison' ? rng.range(18, 30) : rng.range(7, 13);
+            const meat = rng.range(S.meat[0], S.meat[1]);
             c.meat += meat;
-            c.hides += 1;
+            c.hides += S.hide || 0;
+            if (cul.lean.hunt.v > 0.5 && st.kind === 'deer') c.hides += 1;
             c.kind = 'meat';
             c.game = st.kind;
+            this.nature.kill(st.kind, cul.lean.hunt.v > 0.5 && st.kind === 'deer' ? 1.6 : 1);
+            this.today.kills[st.kind] = (this.today.kills[st.kind] || 0) + 1;
             if (st.kind === 'bison') this.today.bison++; else this.today.deer++;
-            p.actLabel = st.kind === 'bison' ? 'Butchering a bison' : 'Dressing a deer';
-            if (c.meat >= CARRY.meat * 0.6) st.t = Math.min(st.t, 0.35);
+            p.actLabel = { bison: 'Butchering a bison', elk: 'Butchering an elk', bear: 'Skinning a bear', turkey: 'Carrying a turkey', rabbit: 'Checking the snares', duck: 'Gathering the ducks', goose: 'Gathering the geese' }[st.kind] || 'Dressing a deer';
+            if (c.meat >= CARRY.meat * 0.6 || S.meat[1] > 18) st.t = Math.min(st.t, 0.35);
           }
           this.wander(p, st, dt, 2.2, 0.35);
           break;
         }
         case 'fish': {
           const c = carry();
-          c.fish += 0.62 * FISH_SEASON[s] * sk.fish * roleMul * dH * prod * rng.range(0.6, 1.4);
+          c.fish += 0.72 * FISH_SEASON[s] * sk.fish * roleMul * dH * prod * rng.range(0.6, 1.4) * mul * this.nature.yieldMul('fish');
+          this.nature.pop.fish = Math.max(0.05, this.nature.pop.fish - 0.00002 * dH);
           if (c.fish >= CARRY.fish) { c.fish = CARRY.fish; st.t = 0; }
           c.kind = 'fish';
           break;
         }
         case 'gather': {
           const c = carry();
-          c.wild += 0.55 * GATHER_SEASON[s] * sk.gather * roleMul * dH * prod;
+          c.wild += 0.68 * GATHER_SEASON[s] * sk.gather * roleMul * dH * prod * mul;
           if (c.wild >= CARRY.wild) { c.wild = CARRY.wild; st.t = 0; }
           c.kind = 'wild';
           this.wander(p, st, dt, 1.2, 0.3);
@@ -1089,14 +1295,15 @@
         }
         case 'wood': {
           const c = carry();
-          c.wood += 2.4 * roleMul * dH;
+          c.wood += 2.4 * roleMul * dH * mul;
           if (c.wood >= CARRY.wood) { c.wood = CARRY.wood; st.t = 0; }
           c.kind = 'wood';
           break;
         }
         case 'hides': {
           if (this.stores.rawHides > 0) {
-            const a = Math.min(this.stores.rawHides, 0.12 * sk.hides * roleMul * dH);
+            const a = Math.min(this.stores.rawHides, 0.12 * sk.hides * roleMul * dH * mul);
+            cul.craftHours += dH;
             this.stores.rawHides -= a;
             this.stores.hides += a;
             this.today.hides += a;
@@ -1104,8 +1311,63 @@
           break;
         }
         case 'craft':
-          this.stores.goods += 0.25 * sk.craft * dH;
+          this.stores.goods += 0.25 * sk.craft * dH * mul;
+          cul.craftHours += dH;
           break;
+        case 'trap': {
+          const c = carry();
+          const pHr = 0.16 * sk.hunt * this.nature.yieldMul(st.kind) * (s === 3 ? 1.2 : 1);
+          if (rng.next() < pHr * dH) {
+            c.pelts = (c.pelts || 0) + 1;
+            c.meat += st.kind === 'beaver' ? rng.range(2, 4) : 0;
+            c.kind = 'wild';
+            this.nature.kill(st.kind, 1);
+            p.actLabel = st.kind === 'beaver' ? 'Taking a beaver from the trap' : 'Skinning a fox';
+          }
+          break;
+        }
+        case 'story':
+          cul.storyHours += dH;
+          break;
+        case 'listen':
+          cul.storyHours += dH * 0.4;
+          break;
+        case 'build':
+          cul.craftHours += dH * 0.5;
+          break;
+        case 'palisade':
+          cul.flags.palisade = Math.min(1, cul.flags.palisade + (dH * mul) / 260);
+          if (cul.flags.palisade >= 1 && !cul.flags.palisadeDone) { cul.flags.palisadeDone = true; this.emit('The palisade around the village is finished.', 'info'); }
+          break;
+        case 'rebuild': {
+          const b = this.W.buildings[st.target];
+          if (b && b.state === 'ruin') {
+            b.repair = (b.repair || 0) + dH * mul;
+            if (b.repair >= 9) { b.state = 'built'; b.repair = 0; this.emit(`A burned ${TM.BUILD_INFO[b.type].name.toLowerCase()} has been rebuilt.`, 'info'); }
+          }
+          cul.craftHours += dH * 0.5;
+          break;
+        }
+        case 'dance': {
+          st.ang += dt * 0.22 * (p.id % 2 ? 1 : 1);
+          const W = this.W;
+          const tx = W.PCX + Math.cos(st.ang) * st.r, ty = W.PCY + Math.sin(st.ang) * st.r;
+          const ddx = tx - p.x, ddy = ty - p.y;
+          p.x = tx; p.y = ty;
+          const sdx = ddx - ddy;
+          if (Math.abs(sdx) > 0.0005) p.dir = sdx > 0 ? 1 : -1;
+          p.wp += Math.hypot(ddx, ddy) * 5.5;
+          break;
+        }
+        case 'ball': {
+          const b = this.ball;
+          if (!b) break;
+          const off = st.team ? 0.8 : -0.8;
+          const tx = b.x + p.jx * 5 + off * 0.5, ty = b.y + p.jy * 5 - off * 0.5;
+          if (Math.hypot(tx - p.x, ty - p.y) > 0.25) { this.moveDirect(p, tx, ty, dt, 1.7); p.anim = 'run'; }
+          else p.anim = 'stand';
+          break;
+        }
         default:
           break;
       }
@@ -1154,6 +1416,7 @@
       if (c.wild) this.addFood('wild', c.wild);
       if (c.wood) { this.stores.wood += c.wood; this.today.wood += c.wood; }
       if (c.hides) this.stores.rawHides += c.hides;
+      if (c.pelts) { this.stores.pelts += c.pelts; this.today.pelts += c.pelts; }
       p.carry = null;
     }
 
@@ -1208,53 +1471,6 @@
       d.state = 'walk';
     }
 
-    updateWildlife(dt, dH) {
-      const rng = this.rng, W = this.W;
-      for (const g of this.deerGroups) {
-        g.moveT -= dH;
-        if (g.moveT <= 0) {
-          g.moveT = rng.range(4, 10);
-          if (W.spots.deer.length) {
-            const i = rng.pick(W.spots.deer);
-            const nx = (i % W.N) + 0.5, ny = ((i / W.N) | 0) + 0.5;
-            if (Math.hypot(nx - g.cx, ny - g.cy) < 14) { g.tx = nx; g.ty = ny; }
-          }
-        }
-        const dx = g.tx - g.cx, dy = g.ty - g.cy, d = Math.hypot(dx, dy);
-        if (d > 0.05) { const st = Math.min(d, dt * 0.08); g.cx += (dx / d) * st; g.cy += (dy / d) * st; }
-        for (const a of g.members) this.updateAnimal(a, g.cx, g.cy, 2.2, dt, 0.7);
-      }
-      const h = this.herd, br = W.bisonRange;
-      h.moveT -= dH;
-      if (h.moveT <= 0) {
-        h.moveT = rng.range(6, 14);
-        h.tx = U.clamp(h.cx + rng.range(-10, 10), br.x0 + 3, br.x1 - 2);
-        h.ty = U.clamp(h.cy + rng.range(-14, 14), br.y0 + 6, br.y1 - 6);
-      }
-      const dx = h.tx - h.cx, dy = h.ty - h.cy, d = Math.hypot(dx, dy);
-      if (d > 0.05) { const st = Math.min(d, dt * 0.06); h.cx += (dx / d) * st; h.cy += (dy / d) * st; }
-      for (const a of this.bison) this.updateAnimal(a, h.cx, h.cy, 5, dt, 0.45);
-    }
-    updateAnimal(a, cx, cy, spread, dt, speed) {
-      const rng = this.rng, W = this.W;
-      a.t -= dt;
-      if (a.moving) {
-        const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
-        const st = speed * dt;
-        const sdx = dx - dy;
-        if (Math.abs(sdx) > 0.02) a.dir = sdx > 0 ? 1 : -1;
-        if (d <= st) { a.x = a.tx; a.y = a.ty; a.moving = false; a.t = rng.range(3, 14); }
-        else { a.x += (dx / d) * st; a.y += (dy / d) * st; a.wp += st * 4; }
-        return;
-      }
-      if (a.t > 0) return;
-      const tx = cx + rng.range(-spread, spread), ty = cy + rng.range(-spread, spread);
-      const ix = Math.floor(tx), iy = Math.floor(ty);
-      if (ix < 1 || iy < 1 || ix >= W.N - 1 || iy >= W.N - 1) { a.t = 1; return; }
-      const t = W.type[iy * W.N + ix];
-      if (t === TM.T.WATER || t === TM.T.SHALLOW || W.occ[iy * W.N + ix] >= 0) { a.t = 1; return; }
-      a.tx = tx; a.ty = ty; a.moving = true;
-    }
   }
 
   TM.Sim = Sim;

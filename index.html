@@ -28,7 +28,7 @@
         </nav>
       </div>
       <p class="menu-foot">A work of historical fiction. The nation, its people and its language are invented, drawing on the many peoples of the prairie–woodland borderlands before European contact.</p>
-      <p class="menu-version">Version 0.1 · The first village</p>
+      <p class="menu-version">Version 0.2 · The newcomers</p>
     </section>
 
     <!-- ============================================================ SETTINGS / NEW GAME -->
@@ -143,6 +143,15 @@
         </div>
       </header>
 
+      <nav id="toolbar" aria-label="Your influence">
+        <button class="tool-btn" data-panel="council" title="The council (K)"><span class="ti" data-icon="council"></span><span class="tl">Council</span></button>
+        <button class="tool-btn" data-panel="leanings" title="Leanings (L)"><span class="ti" data-icon="leanings"></span><span class="tl">Leanings</span></button>
+        <button class="tool-btn" data-panel="culture" title="Traditions (T)"><span class="ti" data-icon="tradition"></span><span class="tl">Traditions</span></button>
+        <button class="tool-btn" data-panel="nature" title="Land and life (G)"><span class="ti" data-icon="nature"></span><span class="tl">Land &amp; life</span></button>
+        <button class="tool-btn" data-panel="colony" title="The newcomers (J)"><span class="ti" data-icon="colony"></span><span class="tl">Newcomers</span></button>
+        <button class="tool-btn" data-panel="overview" title="Nation overview (N)"><span class="ti" data-icon="pop"></span><span class="tl">Nation</span></button>
+      </nav>
+
       <aside id="panel" class="panel hidden" aria-live="polite"></aside>
 
       <div id="log" aria-live="polite"></div>
@@ -154,6 +163,7 @@
           <button class="chip-btn" id="btn-overview" title="Nation overview (N)">Nation</button>
           <button class="chip-btn" id="btn-village" title="Look at the village (H)">Village</button>
           <button class="chip-btn" id="btn-camp" title="Look at the hunting camp (C)">Camp</button>
+          <button class="chip-btn" id="btn-colony" title="Look toward the newcomers (O)">East</button>
         </div>
       </div>
 
@@ -169,12 +179,18 @@
   <script src="js/names.js"></script>
   <script src="js/people.js"></script>
   <script src="js/world.js"></script>
+  <script src="js/nature.js"></script>
+  <script src="js/culture.js"></script>
+  <script src="js/colony.js"></script>
   <script src="js/sim.js"></script>
   <script src="js/sprites.js"></script>
+  <script src="js/sprites2.js"></script>
   <script src="js/figures.js"></script>
+  <script src="js/figures2.js"></script>
   <script src="js/render.js"></script>
   <script src="js/menu.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/ui2.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

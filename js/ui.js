@@ -72,11 +72,13 @@
       const first = bd.querySelector('button.primary') || bd.querySelector('button');
       if (first) setTimeout(() => first.focus(), 30);
       bd._close = close;
+      bd._noEsc = opts.dismiss === false;
       return { el: bd, close };
     },
     closeTop() {
       const root = document.getElementById('modal-root');
       const last = root.lastElementChild;
+      if (last && last._noEsc) return false;
       if (last && last._close) { last._close(); return true; }
       return false;
     },
@@ -139,10 +141,11 @@
       document.getElementById('hud-nation-sub').textContent = s.nationMeaning ? `“${s.nationMeaning}”` : `Village of ${s.villageName}`;
       const res = [
         ['pop', 'People'], ['food', 'Food'], ['wood', 'Firewood'], ['hides', 'Hides'], ['health', 'Health'],
+        ['tradition', 'Tradition'], ['respect', 'Respect'], ['colony', 'Newcomers'],
       ];
       document.getElementById('hud-res').innerHTML = res.map(([k, l]) => `<div class="res" data-res="${k}" data-tip="${k}" tabindex="0">${I[k]}<span class="v" id="r-${k}">–</span><span class="l">${l}</span></div>`).join('');
       const sp = document.getElementById('hud-speed');
-      sp.innerHTML = [[0, 'pause', 'Pause (Space)'], [1, 'play', 'Normal speed (1)'], [3, 'fast', 'Fast (2)'], [8, 'faster', 'Fastest (3)']]
+      sp.innerHTML = [[0, 'pause', 'Pause (Space)'], [1, 'play', 'Normal speed (1)'], [3, 'fast', 'Fast (2)'], [8, 'faster', 'Faster (3)'], [16, 'fastest', 'Fastest (4)']]
         .map(([v, ic, t]) => `<button class="icon-btn" data-speed="${v}" title="${t}" aria-label="${t}">${I[ic]}</button>`).join('');
       sp.onclick = (e) => { const b = e.target.closest('[data-speed]'); if (b) this.g.setSpeed(+b.dataset.speed); };
       document.getElementById('btn-menu').innerHTML = I.menu;
@@ -165,9 +168,17 @@
       set('hides', U.fmt(sim.stores.hides));
       const hp = sim.avgHealth();
       set('health', Math.round(hp) + '%', hp < 60);
+      const cul = sim.culture, col = sim.colony;
+      set('tradition', Math.round(cul.T() * 100) + '%', cul.T() < 0.5);
+      set('respect', String(Math.floor(cul.respect)));
+      const cEl = document.getElementById('r-colony').parentElement;
+      cEl.style.display = col.stage === 'none' ? 'none' : '';
+      if (col.stage !== 'none') set('colony', col.founded ? TM.relLabel(col) : col.stage === 'rumors' ? 'Rumors' : TM.relLabel(col), col.war || col.relations < -30);
       document.getElementById('hud-date').textContent = `Day ${c.dom} of the ${TM.MOONS[c.season][c.moon]}`;
       document.getElementById('hud-season').textContent = `${TM.SEASONS[c.season]}, year ${c.year} · ${timeName(sim.hour)}`;
       this.drawClock();
+      const hud = document.getElementById('hud-top');
+      if (hud && hud.offsetHeight !== this.hudH) { this.hudH = hud.offsetHeight; document.documentElement.style.setProperty('--hud-h', this.hudH + 'px'); }
       const sp = document.querySelectorAll('#hud-speed [data-speed]');
       sp.forEach((b) => b.classList.toggle('on', +b.dataset.speed === this.g.speed));
       if (this.sel) this.refreshPanel();
@@ -256,6 +267,21 @@
         return `<div class="tt-title">Health</div>` + row('Average health', Math.round(sim.avgHealth()) + '%') + row('Unwell right now', sick) +
           '<div style="margin-top:.4rem">Hunger and cold wear people down. Healers tend the sick.</div>';
       }
+      if (k === 'tradition') {
+        const c = sim.culture, t = c.trad;
+        return `<div class="tt-title">Traditions: ${Math.round(c.T() * 100)}%</div>` + row('Language', Math.round(t.language * 100) + '%') + row('Gatherings', Math.round(t.gatherings * 100) + '%') + row('Crafts and knowledge', Math.round(t.crafts * 100) + '%') + row('Our land', Math.round(t.land * 100) + '%') + row('Unity', Math.round(c.unity * 100) + '%') +
+          `<div style="margin-top:.4rem">The newcomers’ ways: ${Math.round(c.I() * 100)}%. Strong traditions bring Respect, unity and good health.</div>`;
+      }
+      if (k === 'respect') {
+        return `<div class="tt-title">Respect: ${Math.floor(sim.culture.respect)}</div>Your standing among the people. It grows each day, faster when traditions are strong. Spend ${TM.SPEAK_COST} to speak in council and ${TM.LEAN_COST} to shift a leaning.`;
+      }
+      if (k === 'colony') {
+        const col = sim.colony;
+        let h = `<div class="tt-title">The newcomers</div>`;
+        if (col.founded) h += row('Settlers', Math.round(col.pop)) + row('Relations', TM.relLabel(col)) + row('Land cleared', col.claimed + ' plots');
+        else h += col.stage === 'rumors' ? 'Only stories so far, passed along from the east.' : row('Relations', TM.relLabel(col)) + row('Trade visits', col.visits);
+        return h;
+      }
       if (k === 'time') {
         return `<div class="tt-title">${timeName(sim.hour)}</div>${WEATHER[sim.weather.kind] || ''}`;
       }
@@ -305,7 +331,7 @@
     // ---------------------------------------------------------------- selection panels
     select(sel) {
       this.sel = sel;
-      this.r.selected = sel ? { kind: sel.kind === 'building' ? 'bld' : sel.kind, obj: sel.obj } : null;
+      this.r.selected = sel && sel.obj && typeof sel.obj === 'object' ? { kind: sel.kind === 'building' ? 'bld' : sel.kind, obj: sel.obj } : null;
       if (!sel) {
         this.panel.classList.add('hidden');
         this.g.setFollow(false);
@@ -326,6 +352,15 @@
       } else if (s.kind === 'building') html = this.buildingHTML(s.obj);
       else if (s.kind === 'field') html = this.fieldHTML();
       else if (s.kind === 'overview') html = this.overviewHTML();
+      else if (s.kind === 'council') html = this.councilHTML();
+      else if (s.kind === 'leanings') html = this.leaningsHTML();
+      else if (s.kind === 'culture') html = this.cultureHTML();
+      else if (s.kind === 'nature') html = this.natureHTML();
+      else if (s.kind === 'colony') html = this.colonyHTML();
+      else if (s.kind === 'species') html = this.speciesHTML(s.obj);
+      else if (s.kind === 'plant') html = this.plantHTML(s.obj);
+      else if (s.kind === 'animal') html = this.animalHTML(s.obj);
+      else if (s.kind === 'settler') html = this.settlerHTML(s.obj);
       html = `<button class="icon-btn close" data-act="close" title="Close (Esc)" aria-label="Close">${I.close}</button>` + html;
       if (html !== this.lastPanel) {
         const st = this.panel.scrollTop;
@@ -346,6 +381,9 @@
         const b = this.sim.W.buildings[+a.dataset.id];
         if (b) { this.select({ kind: 'building', obj: b }); this.g.lookAt(b.cx, b.cy); }
       } else if (act === 'follow') this.g.setFollow(!this.g.follow);
+      else if (act === 'lean') { this.sim.culture.setLeaning(a.dataset.k, +a.dataset.v); this.lastPanel = null; this.refreshPanel(); this.update(); }
+      else if (act === 'species') this.select({ kind: 'species', obj: a.dataset.sp });
+      else if (act === 'plant') this.select({ kind: 'plant', obj: a.dataset.sp });
       else if (act === 'look' && this.sel && this.sel.kind === 'person') this.g.lookAt(this.sel.obj.x, this.sel.obj.y);
     }
 
@@ -436,7 +474,10 @@
         const near = sim.people.filter((p) => !p.inside && p.role !== 'infant' && Math.hypot(p.x - b.cx, p.y - b.cy) < 4);
         extra += `<h4>Gathered here now</h4>${near.length ? `<div class="list">${near.slice(0, 14).map((q) => this.personLink(q, q.actLabel || '')).join('')}</div>` : '<p class="note">No one is at the fire right now. People gather here in the evening.</p>'}`;
       }
-      return `<h3>${esc(info.name)}</h3><p class="meaning">${esc(place)}</p><p>${esc(info.desc)}</p>${extra}`;
+      const where = b.band === 'colony' ? sim.colony.name : place;
+      if (b.state === 'ruin') extra = '<p class="note">Burned. It stands in ruins until it is rebuilt.</p>' + extra;
+      if (b.state === 'burning') extra = '<p class="note">On fire!</p>' + extra;
+      return `<h3>${esc(info.name)}</h3><p class="meaning">${esc(where)}</p><p>${esc(info.desc)}</p>${extra}`;
     }
     cropHTML() {
       const sim = this.sim, cr = sim.crop;

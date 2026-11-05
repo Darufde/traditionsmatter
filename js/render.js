@@ -5,16 +5,16 @@
   'use strict';
   const TM = window.TM;
   const { U, T } = TM;
-  const S = TM.Sprites, F = TM.Figures;
+  const S = TM.Sprites, F = TM.Figures, F2 = TM.Figures2;
   // the land fades into a seasonal haze at the edge of the map
   const HAZE = ['#33402a', '#3b4029', '#41311f', '#8d98a3'];
 
   // ground palettes by season: spring, summer, autumn, winter
   const PAL = [
-    { pA: '#7f9a4c', pB: '#95ac58', fA: '#58783a', fB: '#4a6832', field: '#5e432c', vill: '#8b7154', camp: '#879453', path: '#957a5b', bank: '#a59472', marsh: '#5b7646', sh: '#6e9690', dp: '#2c5a68', ford: '#8d8f7a' },
-    { pA: '#a0a55a', pB: '#8b9b4b', fA: '#4a6a32', fB: '#3e5d2a', field: '#634a30', vill: '#927657', camp: '#9a9858', path: '#9b7f5f', bank: '#a99770', marsh: '#567642', sh: '#5f8f8a', dp: '#285664', ford: '#8f8f78' },
-    { pA: '#a97a46', pB: '#b98f56', fA: '#7a5a34', fB: '#8b6a3b', field: '#6f5236', vill: '#91765a', camp: '#a5835a', path: '#9b7f61', bank: '#a48e6c', marsh: '#87784a', sh: '#628a88', dp: '#2a5360', ford: '#8d8b76' },
-    { pA: '#e7edf2', pB: '#dce4eb', fA: '#d6dee6', fB: '#ccd5df', field: '#e2e7ec', vill: '#cbc4b9', camp: '#d6d8d6', path: '#bdb2a3', bank: '#dde3e8', marsh: '#d2dad6', sh: '#9db9c4', dp: '#3a5e6c', ford: '#b8c4c8' },
+    { pA: '#7f9a4c', pB: '#95ac58', fA: '#58783a', fB: '#4a6832', field: '#5e432c', vill: '#8b7154', camp: '#879453', path: '#957a5b', bank: '#a59472', marsh: '#5b7646', sh: '#6e9690', dp: '#2c5a68', ford: '#8d8f7a', cf: '#6e5a3c', pa: '#8fa850', cl: '#8a7254' },
+    { pA: '#a0a55a', pB: '#8b9b4b', fA: '#4a6a32', fB: '#3e5d2a', field: '#634a30', vill: '#927657', camp: '#9a9858', path: '#9b7f5f', bank: '#a99770', marsh: '#567642', sh: '#5f8f8a', dp: '#285664', ford: '#8f8f78', cf: '#8a7a4a', pa: '#9aa652', cl: '#907656' },
+    { pA: '#a97a46', pB: '#b98f56', fA: '#7a5a34', fB: '#8b6a3b', field: '#6f5236', vill: '#91765a', camp: '#a5835a', path: '#9b7f61', bank: '#a48e6c', marsh: '#87784a', sh: '#628a88', dp: '#2a5360', ford: '#8d8b76', cf: '#9a8456', pa: '#a09050', cl: '#8e7658' },
+    { pA: '#e7edf2', pB: '#dce4eb', fA: '#d6dee6', fB: '#ccd5df', field: '#e2e7ec', vill: '#cbc4b9', camp: '#d6d8d6', path: '#bdb2a3', bank: '#dde3e8', marsh: '#d2dad6', sh: '#9db9c4', dp: '#3a5e6c', ford: '#b8c4c8', cf: '#e4e8ec', pa: '#dfe5ea', cl: '#c8c0b4' },
   ].map((p) => {
     const o = {};
     for (const k in p) o[k] = U.hex(p[k]);
@@ -152,6 +152,8 @@
         return o;
       };
       const vB = blur(blur(villM, 0.3), 0.3), cB = blur(blur(campM, 0.3), 0.3), pB = blur(pathM, 0.55), fB = blur(fieldM, 0.7);
+      this.masks = { vB, cB, pB, fB, colF: new Float32Array(n), colP: new Float32Array(n), colC: new Float32Array(n) };
+      this.refreshColMasks([...Array(n).keys()]);
       const bil = (g, x, y) => {
         const u = U.clamp(x - 0.5, 0, N - 1.001), v = U.clamp(y - 0.5, 0, N - 1.001);
         const i0 = Math.floor(u), j0 = Math.floor(v), fu = u - i0, fv = v - j0;
@@ -164,8 +166,9 @@
         M, dd: new Float32Array(len), wf: new Uint8Array(len), field: new Uint8Array(len), vill: new Uint8Array(len),
         camp: new Uint8Array(len), path: new Uint8Array(len), marsh: new Uint8Array(len), n1: new Uint8Array(len),
         n2: new Uint8Array(len), shade: new Int8Array(len), edge: new Uint8Array(len), ford: new Uint8Array(len),
-        fx: new Uint8Array(len),
+        fx: new Uint8Array(len), n3: new Uint8Array(len), colF: new Uint8Array(len), colP: new Uint8Array(len), colC: new Uint8Array(len),
       };
+      this.bil = bil;
       for (let v = 0; v < M; v++) {
         const ty = (v + 0.5) / k;
         const r = W.rx(ty), w = W.rw(ty);
@@ -181,6 +184,10 @@
           td.marsh[i] = bil(W.marsh, tx, ty) * 255;
           td.n1[i] = nz.fbm(tx * 0.35, ty * 0.35, 3) * 255;
           td.n2[i] = TM.hash2(u, v, 7) * 255;
+          td.n3[i] = nz.n2(tx * 1.9 + 40, ty * 1.9) * 255;
+          td.colF[i] = bil(this.masks.colF, tx, ty) * 255;
+          td.colP[i] = bil(this.masks.colP, tx, ty) * 255;
+          td.colC[i] = bil(this.masks.colC, tx, ty) * 255;
           const ad1 = Math.abs(tx + 0.5 - r), ad0 = Math.abs(tx - 0.5 - r);
           const h1 = U.smooth(0, 14, ad1) * 0.8 + nz.fbm((tx + 0.5) * 0.08, ty * 0.08, 2) * 0.9;
           const h0 = U.smooth(0, 14, ad0) * 0.8 + nz.fbm((tx - 0.5) * 0.08, ty * 0.08, 2) * 0.9;
@@ -200,14 +207,22 @@
     }
 
     paintTerrain(s) {
-      const td = this.td, M = td.M, len = M * M;
+      const M = this.td.M;
       const ctx = this.tex.getContext('2d');
-      const img = ctx.createImageData(M, M);
-      const d = img.data;
+      if (!this.img || this.img.width !== M) this.img = ctx.createImageData(M, M);
+      this.paintSeason = s;
+      this.paintRect(0, 0, M, M);
+      ctx.putImageData(this.img, 0, 0);
+      this.minimapDirty = true;
+    }
+    paintRect(u0, v0, u1, v1) {
+      const td = this.td, M = td.M, s = this.paintSeason;
+      const d = this.img.data;
       const P = PAL[s];
       const BGc = U.hex(HAZE[s]);
       const sm = (e0, e1, x) => { const t = x <= e0 ? 0 : x >= e1 ? 1 : (x - e0) / (e1 - e0); return t * t * (3 - 2 * t); };
-      for (let i = 0; i < len; i++) {
+      for (let vv = v0; vv < v1; vv++) for (let uu = u0; uu < u1; uu++) {
+        const i = vv * M + uu;
         const n1 = td.n1[i] / 255, n2 = td.n2[i] / 255;
         let r, g, b, t;
         // prairie base
@@ -232,6 +247,15 @@
           if (s !== 3) { const m = (td.fx[i] / 255 - 0.5) * 22; fr += m; fg += m * 0.8; fb += m * 0.6; }
           r += (fr - r) * t; g += (fg - g) * t; b += (fb - b) * t;
         }
+        t = sm(0.3, 0.7, td.colF[i] / 255);
+        if (t > 0) {
+          const m = s === 3 ? 0 : (td.fx[i] / 255 - 0.5) * 18;
+          r += (P.cf[0] + m - r) * t; g += (P.cf[1] + m * 0.8 - g) * t; b += (P.cf[2] + m * 0.5 - b) * t;
+        }
+        t = sm(0.3, 0.7, td.colP[i] / 255);
+        if (t > 0) { r += (P.pa[0] - r) * t; g += (P.pa[1] - g) * t; b += (P.pa[2] - b) * t; }
+        t = sm(0.3, 0.7, td.colC[i] / 255 + (n2 - 0.5) * 0.15);
+        if (t > 0) { r += (P.cl[0] - r) * t; g += (P.cl[1] - g) * t; b += (P.cl[2] - b) * t; }
         t = sm(0.33, 0.6, td.path[i] / 255 + (n2 - 0.5) * 0.18);
         if (t > 0) { r += (P.path[0] - r) * t; g += (P.path[1] - g) * t; b += (P.path[2] - b) * t; }
         const dd = td.dd[i];
@@ -256,7 +280,9 @@
           const f = 1 + (n1 - 0.5) * 0.08;
           r *= f; g *= f; b *= f;
         } else {
-          const f = 1 + td.shade[i] / 127 * 0.11 + (n2 - 0.5) * (s === 3 ? 0.03 : 0.07);
+          // dappled shade under the forest canopy
+          const canopy = sm(0.45, 0.9, td.wf[i] / 255) * (td.n3[i] / 255);
+          const f = (1 + td.shade[i] / 127 * 0.11 + (n2 - 0.5) * (s === 3 ? 0.03 : 0.07)) * (1 - canopy * (s === 3 ? 0.08 : 0.2));
           r *= f; g *= f; b *= f;
         }
         // fade into the background at the map edge
@@ -265,7 +291,40 @@
         const o = i * 4;
         d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = 255;
       }
-      ctx.putImageData(img, 0, 0);
+    }
+
+    // the newcomers' fields and clearings
+    refreshColMasks(tiles) {
+      const W = this.W, m = this.masks, T2 = TM.T;
+      for (const i of tiles) {
+        const t = W.type[i];
+        m.colF[i] = t === T2.COLFIELD ? 1 : 0;
+        m.colP[i] = t === T2.PASTURE ? 1 : 0;
+        const ob = W.occ[i] >= 0 ? W.buildings[W.occ[i]] : null;
+        m.colC[i] = t === T2.CLEARED || (ob && ob.band === 'colony') ? 1 : 0;
+        if (!W.path[i]) m.pB[i] = Math.min(m.pB[i], 0.2);
+      }
+    }
+    // land changed: refresh the texels around these tiles
+    updateTiles(tiles) {
+      if (!tiles.length) return;
+      const W = this.W, N = W.N, k = this.k, td = this.td, M = td.M, bil = this.bil, m = this.masks;
+      this.refreshColMasks(tiles);
+      let x0 = N, y0 = N, x1 = 0, y1 = 0;
+      for (const i of tiles) { const x = i % N, y = (i / N) | 0; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      const u0 = Math.max(0, (x0 - 1) * k), v0 = Math.max(0, (y0 - 1) * k), u1 = Math.min(M, (x1 + 2) * k), v1 = Math.min(M, (y1 + 2) * k);
+      for (let v = v0; v < v1; v++) for (let u = u0; u < u1; u++) {
+        const tx = (u + 0.5) / k, ty = (v + 0.5) / k, i = v * M + u;
+        td.wf[i] = bil(W.wf, tx, ty) * 255;
+        td.path[i] = bil(m.pB, tx, ty) * 255;
+        td.colF[i] = bil(m.colF, tx, ty) * 255;
+        td.colP[i] = bil(m.colP, tx, ty) * 255;
+        td.colC[i] = bil(m.colC, tx, ty) * 255;
+      }
+      if (this.img && this.paintSeason !== undefined) {
+        this.paintRect(u0, v0, u1, v1);
+        this.tex.getContext('2d').putImageData(this.img, 0, 0, u0, v0, u1 - u0, v1 - v0);
+      }
       this.minimapDirty = true;
     }
 
@@ -292,8 +351,10 @@
         add({ k: 'bld', x: b.cx, y: b.cy, o: b, up, side });
       }
       for (const f of W.fires) add({ k: 'fire', x: f.x, y: f.y, o: f, up: 40, side: 40 });
+      W.palisade.forEach((sg, idx) => add({ k: 'stake', x: sg.x, y: sg.y, o: sg, idx, bucket: ((Math.round((sg.a / Math.PI) * 8) % 8) + 8) % 8, up: 45, side: 24 }));
       out.sort((a, b) => a.depth - b.depth);
       this.statics = out;
+      this.tileStatic = new Map();
       // smoke emitters
       const em = [];
       for (const b of W.buildings) {
@@ -309,11 +370,48 @@
       this.emitters = em;
     }
 
+    insertStatic(o) {
+      o.ix = (o.x - o.y) * 32;
+      o.iy = (o.x + o.y) * 16;
+      o.depth = o.depth !== undefined ? o.depth : o.x + o.y;
+      const a = this.statics;
+      let lo = 0, hi = a.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (a[mid].depth < o.depth) lo = mid + 1; else hi = mid; }
+      a.splice(lo, 0, o);
+      return o;
+    }
+    // follow the colony as it clears land and raises buildings
+    syncColony() {
+      const col = this.sim.colony;
+      if (!col) return;
+      const ch = col.drainChanges();
+      if (!ch.tiles.length && !ch.buildings.length) return;
+      const W = this.W, N = W.N, T2 = TM.T;
+      this.updateTiles(ch.tiles);
+      for (const i of new Set(ch.tiles)) {
+        const old = this.tileStatic.get(i);
+        if (old) { old.dead = true; this.tileStatic.delete(i); }
+        const t = W.type[i], x = (i % N) + 0.5, y = ((i / N) | 0) + 0.5;
+        const v = TM.hash2(i, 5, 3) * 3 | 0;
+        if (t === T2.COLFIELD) this.tileStatic.set(i, this.insertStatic({ k: 'colfield', x, y, o: { i, v }, up: 40, side: 40 }));
+        else if (t === T2.PASTURE && (v === 0 || TM.hash2(i, 9, 1) < 0.3)) this.tileStatic.set(i, this.insertStatic({ k: 'pasture', x, y, o: { i, v }, up: 20, side: 34 }));
+      }
+      for (const b of ch.buildings) {
+        const up = { fort: 240, meeting: 110, tradepost: 90, cabin: 62 }[b.type] || 60;
+        const side = { fort: 260, meeting: 110, tradepost: 100 }[b.type] || 60;
+        this.insertStatic({ k: 'bld', x: b.cx, y: b.cy, o: b, up, side });
+      }
+      if (this.statics.length > 200 && this.statics.filter((o) => o.dead || (o.o && o.o.dead)).length > 600) this.statics = this.statics.filter((o) => !o.dead && !(o.o && o.o.dead));
+    }
+
     spriteFor(o, s) {
       const sim = this.sim;
       switch (o.k) {
         case 'tree': return S.tree(o.o.kind, s, o.o.v);
         case 'field': return S.field(sim.fieldStage(o.o.rank), o.o.v);
+        case 'colfield': return S.wheat(s, sim.c.moon, o.o.v);
+        case 'pasture': return S.pasture(s, o.o.v);
+        case 'stake': return S.stake(o.bucket, s);
         case 'prop': {
           const p = o.o;
           switch (p.kind) {
@@ -322,12 +420,21 @@
             case 'canoe': return S.canoe(!!p.flip);
             case 'travois': return S.travois(s);
             case 'peggedhide': return S.peggedhide(s);
+            case 'flowers': return p.sp ? S.flower(p.sp, s, p.v || 0) : S.flowers(s, p.v || 0);
+            case 'floor': return S.floor(p.sp, s, p.v || 0);
+            case 'berry': return p.sp ? S.berry2(p.sp, s, p.v || 0) : S.berry(s, p.v || 0);
             default: return S[p.kind] ? S[p.kind](s, p.v || 0) : null;
           }
         }
         case 'bld': {
           const b = o.o;
+          const st = b.state === 'ruin' ? 'ruin' : b.state === 'frame' ? 'frame' : 'built';
+          if (st === 'ruin' && (b.type === 'wigwam' || b.type === 'longhouse' || b.type === 'tipi' || b.type === 'council')) return S.ruin(b.type === 'longhouse' || b.type === 'council' ? 'longhouse' : 'lodge', s);
           switch (b.type) {
+            case 'cabin': return S.cabin(s, b.variant || 0, st);
+            case 'tradepost': return S.tradepost(s, st === 'frame' ? 'built' : st);
+            case 'meeting': return S.meeting(s, st === 'frame' ? 'built' : st);
+            case 'fort': return S.fort(s, st === 'ruin' ? 'ruin' : 'built');
             case 'wigwam': return S.wigwam(s, b.variant || 0, DOORKEY(b));
             case 'longhouse': return S.longhouse(s, b.variant || 0, b.orient === 'y');
             case 'council': return S.council(s, b.orient === 'y');
@@ -352,6 +459,7 @@
       const ctx = this.ctx, sim = this.sim, cam = this.cam, z = cam.z, s = sim.c.season;
       const vw = this.vw, vh = this.vh, dpr = this.dpr;
       if (s !== this.season) { this.season = s; this.paintTerrain(s); }
+      this.syncColony();
       if (this.follow && this.selected && this.selected.kind === 'person') {
         const p = this.selected.obj;
         if (!p.dead) {
@@ -372,14 +480,18 @@
       ctx.drawImage(this.tex, 0, 0);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       this.drawWater(ctx, s);
+      this.drawSplashes(ctx, z);
 
       // visible static objects
       const L = cam.x - vw / 2 / z, R = cam.x + vw / 2 / z, Tp = cam.y - vh / 2 / z, B = cam.y + vh / 2 / z;
       const vis = [];
       const skipSmall = z < 0.55 || (this.gfx.quality === 'low' && z < 1.4);
+      const palN = Math.floor(sim.culture.flags.palisade * this.W.palisade.length);
       for (const o of this.statics) {
         if (o.ix + o.side < L || o.ix - o.side > R || o.iy + 30 < Tp || o.iy - o.up > B) continue;
+        if (o.dead || (o.o && o.o.dead)) continue;
         if (skipSmall && o.small) continue;
+        if (o.k === 'stake' && o.idx >= palN) continue;
         vis.push(o);
       }
       // dynamic objects
@@ -396,8 +508,19 @@
         dyn.push({ k: 'person', o: p, depth: this.agentDepth(p.x, p.y) });
       }
       for (const d of sim.dogs) if (inView(d.x, d.y, 20)) dyn.push({ k: 'dog', o: d, depth: this.agentDepth(d.x, d.y) });
-      for (const g of sim.deerGroups) for (const a of g.members) if (inView(a.x, a.y, 30)) dyn.push({ k: 'deer', o: a, depth: a.x + a.y });
-      for (const a of sim.bison) if (inView(a.x, a.y, 40)) dyn.push({ k: 'bison', o: a, depth: a.x + a.y });
+      for (const g of sim.nature.groups) {
+        if (!g.vis) continue;
+        for (const a of g.members) if (!a.hidden && inView(a.x, a.y, 40)) dyn.push({ k: 'animal', o: a, depth: a.x + a.y });
+      }
+      const col = sim.colony;
+      for (const a of col.agents) {
+        if (a.inside || a.gone || !inView(a.x, a.y, 30)) continue;
+        dyn.push({ k: 'settler', o: a, depth: this.agentDepth(a.x, a.y) });
+        if (a.horse) dyn.push({ k: 'beast', o: a.horse, depth: a.horse.x + a.horse.y });
+      }
+      for (const a of col.livestock) if (inView(a.x, a.y, 30)) dyn.push({ k: 'beast', o: a, depth: this.agentDepth(a.x, a.y) });
+      if (sim.ball) dyn.push({ k: 'ball', o: sim.ball, depth: sim.ball.x + sim.ball.y });
+      this.envGoods = sim.culture.integ.goods;
       dyn.sort((a, b) => a.depth - b.depth);
 
       // merge and draw
@@ -412,9 +535,13 @@
       }
       this.updateParticles(dt, s);
       this.drawParticles(ctx, z);
+      this.drawFlyers(ctx, z);
       this.drawSelectionMarker(ctx, z);
+      if (this.gfx.weather) this.drawClouds(ctx, dt, s);
       this.drawLighting(ctx, s);
       if (this.gfx.weather) this.drawWeather(ctx, dt, s);
+      this.drawSeasonal(ctx, dt, s);
+      this.drawVignette(ctx);
       this.drawLabels(ctx, z);
     }
 
@@ -466,7 +593,7 @@
             ctx.ellipse(sp[0], sp[1], 9 * z, 4.5 * z, 0, 0, Math.PI * 2);
             ctx.stroke();
           }
-          F.drawPerson(ctx, p, sp[0], sp[1], z, { season: s, infant: this.infantCarriers.has(p.id) });
+          F.drawPerson(ctx, p, sp[0], sp[1], z, { season: s, infant: this.infantCarriers.has(p.id), goods: this.envGoods });
           const h = 25 * p.look.h * z;
           this.drawn.push({ kind: 'person', obj: p, bb: [sp[0] - 6 * z, sp[1] - h - 2, sp[0] + 6 * z, sp[1] + 3] });
           return;
@@ -475,6 +602,49 @@
           this.toScreen(o.o.x, o.o.y, sp);
           F.drawDog(ctx, o.o, sp[0], sp[1], z, this.time);
           return;
+        case 'animal': {
+          const a = o.o;
+          this.toScreen(a.x, a.y, sp);
+          const k = a.sp;
+          if (k === 'deer') F.drawDeer(ctx, a, sp[0], sp[1], z, s);
+          else if (k === 'bison') F.drawBison(ctx, a, sp[0], sp[1], z, s);
+          else if (F2.QUAD[k]) F2.drawQuad(ctx, a, sp[0], sp[1], z, s, k);
+          else if (k === 'rabbit') F2.drawRabbit(ctx, a, sp[0], sp[1], z, s);
+          else if (k === 'beaver') F2.drawBeaver(ctx, a, sp[0], sp[1], z, this.time);
+          else F2.drawBird(ctx, a, sp[0], sp[1], z, s, k);
+          this.drawn.push({ kind: 'animal', obj: a, bb: [sp[0] - 8 * z, sp[1] - 14 * z, sp[0] + 8 * z, sp[1] + 3] });
+          return;
+        }
+        case 'settler': {
+          const a = o.o;
+          this.toScreen(a.x, a.y, sp);
+          const sel = this.selected && this.selected.obj === a;
+          if (sel || (this.hover && this.hover.obj === a)) {
+            ctx.strokeStyle = sel ? 'rgba(255,214,140,0.95)' : 'rgba(255,240,210,0.6)';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.ellipse(sp[0], sp[1], 9 * z, 4.5 * z, 0, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          F2.drawSettler(ctx, a, sp[0], sp[1], z, s);
+          this.drawn.push({ kind: 'settler', obj: a, bb: [sp[0] - 6 * z, sp[1] - 26 * z, sp[0] + 6 * z, sp[1] + 3] });
+          return;
+        }
+        case 'beast': {
+          const a = o.o;
+          this.toScreen(a.x, a.y, sp);
+          F2.drawQuad(ctx, a, sp[0], sp[1], z, s, a.sp);
+          this.drawn.push({ kind: 'animal', obj: a, bb: [sp[0] - 8 * z, sp[1] - 14 * z, sp[0] + 8 * z, sp[1] + 3] });
+          return;
+        }
+        case 'ball': {
+          const b = o.o;
+          this.toScreen(b.x, b.y, sp);
+          ctx.fillStyle = 'rgba(25,18,10,0.25)';
+          ctx.beginPath(); ctx.ellipse(sp[0], sp[1], 2 * z, 0.8 * z, 0, 0, Math.PI * 2); ctx.fill();
+          this.blit(ctx, S.ball(), sp[0], sp[1] - (b.z || 0) * z);
+          return;
+        }
         case 'deer':
           this.toScreen(o.o.x, o.o.y, sp);
           F.drawDeer(ctx, o.o, sp[0], sp[1], z, s);
@@ -492,7 +662,8 @@
           const hour = sim.hour;
           const evening = hour > 17 || hour < 7;
           const strength = f.kind === 'big' ? (evening ? 1 : 0.55) : f.kind === 'stones' ? 0.5 : (Math.abs(hour - 12) < 1.3 || Math.abs(hour - 18) < 1.3 ? 0.9 : 0.4);
-          if (f.kind === 'pot') this.blit(ctx, S.pot(), sp[0] + 3 * z, sp[1] - 1.5 * z, 0.5);
+          const kettle = f.kind === 'pot' && this.sim.culture.integ.goods > ((f.hh || 1) * 0.137 % 1) * 0.9 + 0.08;
+          if (f.kind === 'pot') this.blit(ctx, kettle ? S.kettle() : S.pot(), sp[0] + 3 * z, sp[1] - 1.5 * z, 0.5);
           else if (f.kind === 'tripod') this.blit(ctx, S.tripod(), sp[0], sp[1] - 1 * z, 0.85);
           F.drawFlames(ctx, sp[0] - (f.kind === 'pot' ? 1.5 * z : 0), sp[1] - 0.5 * z, z, Math.min(2.2, size) * 0.8, this.time, f.x * 3.1 + f.y, strength);
           if (f.bld !== undefined) {
@@ -514,8 +685,17 @@
             if (sel || hov) this.drawFootprint(ctx, b, sel);
             const bb = this.blit(ctx, spr, sp[0], sp[1]);
             this.drawn.push({ kind: 'bld', obj: b, bb });
-          } else {
+            if (b.state === 'burning') this.drawBurning(ctx, b, z);
+          } else if (o.k === 'tree' || (o.k === 'prop' && (o.o.kind === 'grass' || o.o.kind === 'cattail' || o.o.kind === 'wildrice' || o.o.kind === 'sunflower'))) {
+            const wind = this.sim.weather ? Math.abs(this.sim.weather.wind) * 0.6 + 0.4 + (this.sim.weather.kind === 'storm' ? 1.2 : 0) : 0.6;
+            const amp = (o.k === 'tree' ? 0.016 : 0.07) * wind;
+            const sk = Math.sin(this.time * (o.k === 'tree' ? 1.1 : 1.9) + o.x * 0.7 + o.y * 0.4) * amp;
+            const d = this.dpr;
+            ctx.setTransform(d, 0, -sk * d, d, sk * sp[1] * d, 0);
             this.blit(ctx, spr, sp[0], sp[1], o.k === 'tree' ? o.o.s : 1);
+            ctx.setTransform(d, 0, 0, d, 0, 0);
+          } else {
+            this.blit(ctx, spr, sp[0], sp[1], 1);
           }
         }
       }
@@ -579,6 +759,166 @@
       }
     }
 
+    // ---------------------------------------------------------------- life and weather effects
+    drawSplashes(ctx, z) {
+      const sp = [0, 0];
+      for (const f of this.sim.nature.splashes) {
+        this.toScreen(f.x, f.y, sp);
+        if (sp[0] < -20 || sp[0] > this.vw + 20 || sp[1] < -20 || sp[1] > this.vh + 20) continue;
+        const t = f.t / 1.6;
+        ctx.strokeStyle = `rgba(235,245,245,${0.55 * (1 - t)})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(sp[0], sp[1], (2 + t * 9) * z, (1 + t * 4.5) * z, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        if (t < 0.25) {
+          ctx.fillStyle = 'rgba(190,200,190,0.9)';
+          ctx.beginPath();
+          ctx.ellipse(sp[0], sp[1] - (1 - t * 4) * 6 * z, 1.6 * z, 0.8 * z, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    drawFlyers(ctx, z) {
+      const sp = [0, 0];
+      for (const f of this.sim.nature.flyers) {
+        this.toScreen(f.x, f.y, sp);
+        const y = sp[1] - f.alt * z;
+        if (sp[0] < -60 || sp[0] > this.vw + 60 || y < -60 || sp[1] > this.vh + 80) continue;
+        F2.drawFlyer(ctx, f, sp[0], y, z, sp[0] + f.alt * z * 0.25, sp[1]);
+      }
+    }
+    drawBurning(ctx, b, z) {
+      const sp = [0, 0];
+      const n = Math.max(2, Math.round((b.w * b.h) / 2));
+      for (let k = 0; k < n; k++) {
+        const fx = b.x + 0.3 + ((k * 0.618) % 1) * (b.w - 0.6), fy = b.y + 0.3 + ((k * 0.382 + 0.2) % 1) * (b.h - 0.6);
+        this.toScreen(fx, fy, sp);
+        F.drawFlames(ctx, sp[0], sp[1] - 10 * z, z * 1.4, 2.4, this.time + k, k * 3.3, 1);
+      }
+      if (Math.random() < 0.6) this.particles.push({ x: b.cx + (Math.random() - 0.5) * b.w, y: b.cy + (Math.random() - 0.5) * b.h, z: 24, vx: 0, vy: 0, vz: 16, life: 0, max: 6, r: 5, dark: true });
+    }
+    drawClouds(ctx, dt, s) {
+      const k = this.sim.weather.kind;
+      const want = k === 'cloudy' ? 7 : k === 'clear' || k === 'hot' ? 3 : 0;
+      const N = this.W.N;
+      this.clouds = this.clouds || [];
+      while (this.clouds.length < want) this.clouds.push({ x: Math.random() * N, y: Math.random() * N, r: 8 + Math.random() * 10 });
+      if (this.clouds.length > want) this.clouds.length = want;
+      if (!this.clouds.length) return;
+      const amb = this.ambient(this.sim.hour, s);
+      if (amb.dark > 0.6) return;
+      if (!this.cloudImg) {
+        const c = document.createElement('canvas');
+        c.width = c.height = 128;
+        const g = c.getContext('2d');
+        const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+        gr.addColorStop(0, 'rgba(20,24,34,1)');
+        gr.addColorStop(0.6, 'rgba(20,24,34,0.6)');
+        gr.addColorStop(1, 'rgba(20,24,34,0)');
+        g.fillStyle = gr;
+        g.fillRect(0, 0, 128, 128);
+        this.cloudImg = c;
+      }
+      const wind = this.sim.weather.wind || 0.3;
+      const sp = [0, 0], z = this.cam.z;
+      ctx.globalAlpha = 0.13 * (1 - amb.dark);
+      for (const c of this.clouds) {
+        c.x += (0.25 + wind * 0.4) * dt;
+        c.y -= 0.12 * dt;
+        if (c.x > N + 20) { c.x = -20; c.y = Math.random() * N; }
+        if (c.y < -20) c.y = N + 20;
+        this.toScreen(c.x, c.y, sp);
+        const rx = c.r * 45 * z, ry = c.r * 23 * z;
+        if (sp[0] + rx < 0 || sp[0] - rx > this.vw || sp[1] + ry < 0 || sp[1] - ry > this.vh) continue;
+        ctx.drawImage(this.cloudImg, sp[0] - rx, sp[1] - ry, rx * 2, ry * 2);
+      }
+      ctx.globalAlpha = 1;
+    }
+    drawSeasonal(ctx, dt, s) {
+      if (!this.gfx.weather || this.gfx.quality === 'low') return;
+      const vw = this.vw, vh = this.vh, h = this.sim.hour, z = this.cam.z;
+      this.seasonal = this.seasonal || [];
+      const amb = this.ambient(h, s);
+      let kind = null, want = 0;
+      if (s === 2 && z > 0.7) { kind = 'leaf'; want = 40; }
+      else if (s === 1 && amb.dark > 0.5 && this.sim.weather.kind !== 'rain') { kind = 'firefly'; want = 60; }
+      else if (s === 1 && amb.dark < 0.1 && z > 1) { kind = 'butterfly'; want = 8; }
+      else if (s === 0 && amb.dark < 0.1 && z > 1.2) { kind = 'butterfly'; want = 4; }
+      const P = this.seasonal;
+      for (let i = P.length - 1; i >= 0; i--) if (P[i].kind !== kind) P.splice(i, 1);
+      while (P.length < want) P.push({ kind, x: Math.random() * vw, y: Math.random() * vh, p: Math.random() * 6, c: Math.floor(Math.random() * 4) });
+      for (const q of P) {
+        q.p += dt;
+        if (kind === 'leaf') {
+          q.y += (24 + q.c * 6) * dt;
+          q.x += (Math.sin(q.p * 1.4) * 30 + (this.sim.weather.wind || 0) * 25) * dt;
+          if (q.y > vh + 10) { q.y = -10; q.x = Math.random() * vw; }
+          ctx.fillStyle = ['#c8642a', '#d8a03a', '#a8442a', '#c8b048'][q.c];
+          ctx.save();
+          ctx.translate(q.x, q.y);
+          ctx.rotate(Math.sin(q.p * 3) * 1.2);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 3, 1.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else if (kind === 'firefly') {
+          q.x += Math.sin(q.p * 0.7 + q.c) * 12 * dt;
+          q.y += Math.cos(q.p * 0.5) * 8 * dt;
+          const a = Math.max(0, Math.sin(q.p * 1.6 + q.c * 2)) * 0.9;
+          ctx.fillStyle = `rgba(220,245,140,${a})`;
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (kind === 'butterfly') {
+          q.x += Math.cos(q.p * 0.8 + q.c) * 30 * dt;
+          q.y += Math.sin(q.p * 1.3) * 20 * dt;
+          if (q.x < -10 || q.x > vw + 10 || q.y < -10 || q.y > vh + 10) { q.x = Math.random() * vw; q.y = Math.random() * vh; }
+          const w = Math.abs(Math.sin(q.p * 14)) * 3;
+          ctx.fillStyle = q.c % 2 ? '#e8822a' : '#f0e8c8';
+          ctx.beginPath();
+          ctx.ellipse(q.x - 1.4, q.y, w + 0.1, 2, 0, 0, Math.PI * 2);
+          ctx.ellipse(q.x + 1.4, q.y, w + 0.1, 2, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    drawVignette(ctx) {
+      const vw = this.vw, vh = this.vh;
+      if (!this.vig || this.vig.w !== vw || this.vig.h !== vh) {
+        const c = document.createElement('canvas');
+        c.width = Math.ceil(vw / 2);
+        c.height = Math.ceil(vh / 2);
+        const g = c.getContext('2d');
+        const gr = g.createRadialGradient(c.width / 2, c.height / 2, Math.min(c.width, c.height) * 0.35, c.width / 2, c.height / 2, Math.hypot(c.width, c.height) * 0.55);
+        gr.addColorStop(0, 'rgba(12,8,6,0)');
+        gr.addColorStop(1, 'rgba(12,8,6,0.34)');
+        g.fillStyle = gr;
+        g.fillRect(0, 0, c.width, c.height);
+        this.vig = { c, w: vw, h: vh };
+      }
+      ctx.drawImage(this.vig.c, 0, 0, vw, vh);
+    }
+
+    // the plant or tree nearest a point on the ground, for the nature cards
+    pickPlant(mx, my) {
+      const t = this.toTile(mx, my), W = this.W, N = W.N;
+      const tx = Math.floor(t[0]), ty = Math.floor(t[1]);
+      let best = null, bd = 0.9;
+      for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) {
+        const i = (ty + oy) * N + tx + ox;
+        for (const m of [W.treesAt.get(i), W.propsAt.get(i)]) {
+          if (!m) continue;
+          for (const o of m) {
+            if (o.dead || !TM.PLANTS[o.sp || o.kind]) continue;
+            const d = Math.hypot(o.x - t[0], o.y - t[1]);
+            if (d < bd) { bd = d; best = o; }
+          }
+        }
+      }
+      return best;
+    }
+
     // ---------------------------------------------------------------- smoke
     updateParticles(dt, s) {
       const ps = this.particles, sim = this.sim;
@@ -628,13 +968,14 @@
     drawParticles(ctx, z) {
       const sp = [0, 0];
       const img = this.puff(this.sim.hour > 20 || this.sim.hour < 6);
+      const dark = this.puff(true);
       for (const p of this.particles) {
         this.toScreen(p.x, p.y, sp);
         const t = p.life / p.max;
-        const a = (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85) * 0.34;
+        const a = (t < 0.15 ? t / 0.15 : 1 - (t - 0.15) / 0.85) * (p.dark ? 0.6 : 0.34);
         const r = (p.r + p.life * 2.4) * z * 1.6;
         ctx.globalAlpha = a;
-        ctx.drawImage(img, sp[0] - r, sp[1] - p.z * z - r, r * 2, r * 2);
+        ctx.drawImage(p.dark ? dark : img, sp[0] - r, sp[1] - p.z * z - r, r * 2, r * 2);
       }
       ctx.globalAlpha = 1;
     }
@@ -704,6 +1045,11 @@
         const r = (big ? 4.2 : 2.4) * Math.min(2, f.size) * 26 * z * fl;
         if (sp[0] < -r || sp[0] > vw + r || sp[1] < -r || sp[1] > vh + r) continue;
         lights.push([sp[0], sp[1] - 4 * z, r, strength]);
+      }
+      for (const b of this.W.buildings) {
+        if (b.state !== 'burning') continue;
+        this.toScreen(b.cx, b.cy, sp);
+        lights.push([sp[0], sp[1] - 10 * z, 6 * 26 * z, 1]);
       }
       // warm doorways of occupied lodges at night
       const occupied = new Set();
@@ -869,7 +1215,11 @@
         ctx.fillRect(q[0] - 0.6, q[1] - 0.6, 1.3, 1.3);
       }
       ctx.fillStyle = '#2a1d14';
-      for (const a of sim.bison) { const q = pt(a.x, a.y); ctx.fillRect(q[0] - 0.7, q[1] - 0.7, 1.5, 1.5); }
+      for (const g of sim.nature.groups) if (g.sp === 'bison' && g.vis) for (const a of g.members) { if (a.hidden) continue; const q = pt(a.x, a.y); ctx.fillRect(q[0] - 0.7, q[1] - 0.7, 1.5, 1.5); }
+      ctx.fillStyle = '#9ec4e8';
+      for (const a of sim.colony.agents) { if (a.inside || a.gone) continue; const q = pt(a.x, a.y); ctx.fillRect(q[0] - 0.6, q[1] - 0.6, 1.3, 1.3); }
+      ctx.fillStyle = '#3a4a5e';
+      for (const b of sim.colony.buildings) { const q = pt(b.cx, b.cy); ctx.fillRect(q[0] - 1.5, q[1] - 1, 3, 2); }
       // viewport
       const c = [this.toTile(0, 0), this.toTile(this.vw, 0), this.toTile(this.vw, this.vh), this.toTile(0, this.vh)].map((t) => pt(t[0], t[1]));
       ctx.strokeStyle = 'rgba(255,236,200,0.9)';

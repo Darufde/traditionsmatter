@@ -69,6 +69,10 @@
       paint: sex === 'M' && age >= 17 && rng.chance(0.25),
       feather: sex === 'M' && age >= 17 && rng.chance(0.12),
       gait: rng.range(0.9, 1.12),
+      // how readily this person takes up the newcomers' goods, and what they would wear
+      adopt: rng.range(0.05, 1),
+      calico: rng.pick(['#b8403a', '#3a5a8a', '#e6dfcc', '#8a5a9a', '#c9a23a', '#4a7a5a']),
+      blanket: rng.pick(['#a8322a', '#2e4a7a', '#e8e2d2', '#3a6a4a']),
     };
   }
 

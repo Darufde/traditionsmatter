@@ -9,7 +9,7 @@
   TM.C = {
     TW: 64,              // iso tile width in px (zoom 1)
     TH: 32,              // iso tile height in px
-    MAP: 96,             // map is MAP x MAP tiles
+    MAP: 120,             // map is MAP x MAP tiles
     DAY_SECONDS: 240,    // real seconds per in-game day at 1x speed
     DAYS_PER_MOON: 4,
     MOONS_PER_SEASON: 3,

@@ -895,6 +895,10 @@
     cottonwood: [['#98bf62', '#83ad52'], ['#5a7f3c', '#4a7032'], ['#d8c050', '#c9b040', '#e0cc6a'], null],
     birch: [['#a2c66a', '#8db658'], ['#6a8b45', '#5a7b3a'], ['#e0c84a', '#d4b83c'], null],
     willow: [['#a6c66a', '#93b85a'], ['#7a9a4c', '#6a8a40'], ['#b7b453', '#a8a648'], null],
+    walnut: [['#8fb45a', '#7aa04a'], ['#587a38', '#4a6c30'], ['#c8b048', '#b89a3a', '#a88a30'], null],
+    sycamore: [['#9cc06a', '#88b058'], ['#5f8540', '#527636'], ['#b89048', '#a07a3a', '#c8a050'], null],
+    basswood: [['#94bc60', '#80aa50'], ['#507a34', '#456c2c'], ['#d4c050', '#c8b040'], null],
+    plum: [['#f4ece4', '#f8f2ee', '#ead8d8'], ['#5a843a', '#4e7632'], ['#c8642a', '#b8502a', '#d88a3a'], null],
   };
   const TREE_DIM = {
     oak: { th: 22, r: 29, ry: 0.82, bark: '#4e3d30' },
@@ -904,6 +908,10 @@
     cottonwood: { th: 34, r: 27, ry: 1.12, bark: '#6a6258' },
     birch: { th: 30, r: 15, ry: 1.35, bark: '#e8e2d6' },
     willow: { th: 16, r: 25, ry: 0.85, bark: '#5a4a3a' },
+    walnut: { th: 30, r: 23, ry: 0.88, bark: '#3e342c' },
+    sycamore: { th: 34, r: 27, ry: 1.0, bark: '#d8d0c0' },
+    basswood: { th: 30, r: 23, ry: 1.18, bark: '#5a4a3c' },
+    plum: { th: 12, r: 15, ry: 0.85, bark: '#4a3a30' },
   };
 
   function drawBranches(ctx, x, y, a, len, w, depth, rng, col, snow) {
@@ -945,6 +953,9 @@
     tg.addColorStop(1, sh(d.bark, 0.7));
     ctx.fillStyle = tg;
     ctx.fill();
+    if (kind === 'sycamore') {
+      for (let k = 0; k < 7; k++) { ctx.fillStyle = rng.pick(['#8a8270', '#a89c86', '#6e6656']); ell(ctx, rng.range(-2.5, 2.5), -rng.range(4, th), rng.range(1, 2.2), rng.range(1.2, 2.6)); ctx.fill(); }
+    }
     if (kind === 'birch') {
       ctx.fillStyle = '#2b2622';
       for (let k = 0; k < 6; k++) ctx.fillRect(rng.range(-2.5, 1.5), -rng.range(3, th), rng.range(1.5, 3), 0.9);
@@ -1018,6 +1029,9 @@
       ctx.fillStyle = left ? sh(rng.pick(leaves), 1.25, 0.8) : sh(rng.pick(leaves), 0.7, 0.6);
       ell(ctx, x, y, 1.6, 1.3);
       ctx.fill();
+    }
+    if (kind === 'plum' && s === 1) {
+      for (let k = 0; k < 14; k++) { ctx.fillStyle = rng.pick(['#a8283a', '#c83a2a', '#7a2a4a']); ell(ctx, rng.range(-r * 0.7, r * 0.7), cy + rng.range(-ry * 0.5, ry * 0.5), 1.4, 1.4); ctx.fill(); }
     }
     if (s === 0 && v === 1 && (kind === 'oak' || kind === 'maple' || kind === 'cottonwood')) {
       for (let k = 0; k < 18; k++) {

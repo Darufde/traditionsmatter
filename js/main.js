@@ -53,6 +53,9 @@
     start() {
       this.ui = new TM.UI(this);
       this.sim.onEvent = (e) => this.ui.addLog(e);
+      this.sim.onIssue = (is) => this.openCouncil(is);
+      this.sim.culture.onEnding = (e) => this.ending(e);
+      document.querySelectorAll('#toolbar .ti').forEach((el) => (el.innerHTML = TM.ICONS[el.dataset.icon] || ''));
       this.bindInput();
       this.running = true;
       this.renderer.resize();
@@ -105,6 +108,20 @@
       this.renderer.follow = on;
     }
     lookAt(x, y) { this.renderer.centerOn(x, y); }
+    // the council takes up a matter: the game pauses while it is debated
+    openCouncil(is) {
+      const resume = this.speed || this.prevSpeed || 1;
+      this.setSpeed(0);
+      this.ui.openDebate(is, () => { if (this.running && !TM.Modal.isOpen()) this.setSpeed(resume); });
+    }
+    ending(e) {
+      this.setSpeed(0);
+      setTimeout(() => this.ui.showEnding(e, (c) => { if (c === 'menu') this.app.quitToMenu(); else this.setSpeed(1); }), 50);
+    }
+    togglePanel(kind) {
+      if (this.ui.sel && this.ui.sel.kind === kind) this.ui.select(null);
+      else this.ui.select({ kind });
+    }
     setGraphics(g) {
       this.gfx = g;
       this.renderer.setGraphics(g);
@@ -115,12 +132,14 @@
       const html = `<div class="band"></div>
         <h2>The ${esc(s.nationName)}</h2>
         <p>${s.nationMeaning ? `<i>${esc(s.nationMeaning)}</i>. ` : ''}${sim.people.length} people live in <b>${esc(s.villageName)}</b>, a village of bark longhouses and wigwams on the edge of the woodland, and in <b>${esc(s.campName)}</b>, a hunting camp of hide tipis out on the prairie across the river.</p>
-        <p>It is the ${TM.MOONS[c.season][c.moon]} of ${TM.SEASONS[c.season].toLowerCase()}. For now, watch your people live through the seasons: they farm, hunt, fish, gather, tan hides, keep the fires and gather to talk in the evening. Watch the food, firewood and health of the nation along the top of the screen.</p>
+        <p>It is the ${TM.MOONS[c.season][c.moon]} of ${TM.SEASONS[c.season].toLowerCase()}. The people live by their own choices. You do not command them. You are a voice they listen to, and your <b>Respect</b> lets you speak in the <b>council</b> and shift the people’s <b>leanings</b> over time.</p>
+        <p>Before long, strangers will come from across the great water. Whether the old ways endure is up to the council, and to you.</p>
         <div class="controls">
           <kbd>Drag</kbd><span>Look around (or W A S D / arrow keys)</span>
           <kbd>Scroll</kbd><span>Zoom in and out</span>
           <kbd>Click</kbd><span>Learn about a person, a lodge or the fields</span>
           <kbd>Space</kbd><span>Pause · <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> change speed</span>
+          <kbd>K</kbd><span>Council · <kbd>L</kbd> leanings · <kbd>T</kbd> traditions · <kbd>G</kbd> land and life</span>
           <kbd>N</kbd><span>Nation overview · <kbd>H</kbd> village · <kbd>C</kbd> camp</span>
         </div>
         <div class="modal-actions"><button class="btn primary" data-m="go">Begin</button></div>`;
@@ -248,6 +267,8 @@
       $('btn-menu').onclick = () => this.pauseMenu();
       $('btn-chronicle').onclick = () => this.ui.openChronicle();
       $('btn-overview').onclick = () => this.toggleOverview();
+      $('btn-colony').onclick = () => { this.setFollow(false); const P = this.world.plan; this.lookAt(P.KX - 6, P.KY); };
+      $('toolbar').onclick = (e) => { const b = e.target.closest('[data-panel]'); if (b) this.togglePanel(b.dataset.panel); };
       $('btn-village').onclick = () => { this.setFollow(false); this.lookAt(this.world.PCX, this.world.PCY); };
       $('btn-camp').onclick = () => { this.setFollow(false); this.lookAt(this.world.CCX, this.world.CCY); };
     }
@@ -274,12 +295,17 @@
       const hit = this.renderer.pick(x, y);
       if (hit) {
         if (hit.kind === 'person') this.ui.select({ kind: 'person', obj: hit.obj });
+        else if (hit.kind === 'animal') this.ui.select({ kind: 'animal', obj: hit.obj });
+        else if (hit.kind === 'settler') this.ui.select({ kind: 'settler', obj: hit.obj });
         else this.ui.select({ kind: 'building', obj: hit.obj });
         return;
       }
       const t = this.renderer.toTile(x, y);
       const W = this.world, tx = Math.floor(t[0]), ty = Math.floor(t[1]);
-      if (tx >= 0 && ty >= 0 && tx < W.N && ty < W.N && W.type[ty * W.N + tx] === TM.T.FIELD) this.ui.select({ kind: 'field' });
+      if (tx >= 0 && ty >= 0 && tx < W.N && ty < W.N && W.type[ty * W.N + tx] === TM.T.FIELD) { this.ui.select({ kind: 'field' }); return; }
+      if (tx >= 0 && ty >= 0 && tx < W.N && ty < W.N && (W.type[ty * W.N + tx] === TM.T.COLFIELD || W.type[ty * W.N + tx] === TM.T.PASTURE)) { this.ui.select({ kind: 'colony' }); return; }
+      const plant = this.renderer.pickPlant(x, y);
+      if (plant) this.ui.select({ kind: 'plant', obj: plant.sp || plant.kind });
       else this.ui.select(null);
     }
     onKey(e, down) {
@@ -299,6 +325,13 @@
       else if (k === '1') this.setSpeed(1);
       else if (k === '2') this.setSpeed(3);
       else if (k === '3') this.setSpeed(8);
+      else if (k === '4') this.setSpeed(16);
+      else if (k === 'k') this.togglePanel('council');
+      else if (k === 'l') this.togglePanel('leanings');
+      else if (k === 't') this.togglePanel('culture');
+      else if (k === 'g') this.togglePanel('nature');
+      else if (k === 'j') this.togglePanel('colony');
+      else if (k === 'o') { this.setFollow(false); this.lookAt(this.world.plan.KX - 6, this.world.plan.KY); }
       else if (k === 'escape') { if (this.ui.sel) this.ui.select(null); else this.pauseMenu(); }
       else if (k === 'n') this.toggleOverview();
       else if (k === 'h') { this.setFollow(false); this.lookAt(this.world.PCX, this.world.PCY); }
@@ -469,8 +502,8 @@
     },
     about() {
       TM.Modal.open(`<div class="band"></div><h2>About Traditions Matter</h2>
-        <p>A survival and strategy game set in a fictional North America. You lead an Indigenous nation of several villages through seasons and generations, managing food, health, firewood, trade, culture and the voices of your council. In later chapters a foreign colony appears on the coast, and your choices decide what becomes of your land and your people.</p>
-        <p><b>This first version</b> brings the nation to life before contact: a village of elm-bark longhouses and mat-and-bark wigwams beside maize, bean and squash fields, and a hunting camp of bison-hide tipis on the prairie. There are no horses, metal tools, guns, cloth or glass beads yet. Dogs pull the travois, tools are stone, bone and wood, pots are fired clay, and decoration is quill and paint.</p>
+        <p>A game of survival, tradition and influence in a fictional North America. You do not rule. You are a voice the people listen to. You speak in the council and shape the people’s leanings while they live their own lives.</p>
+        <p>The first year belongs to the old world: elm-bark longhouses, mat-covered wigwams, fields of maize, beans and squash, and a hunting camp of bison-hide tipis on the prairie. Then strangers arrive from across the sea with iron and cloth, guns and horses, sickness and a hunger for land. Will the people trade, resist, or try to do both? The old ways are the people’s greatest strength, and the game is weighted toward keeping them.</p>
         <p>The nation, its people and its language are invented. They draw on the many peoples of the prairie–woodland borderlands without portraying any one of them, and the game leaves out sacred ceremonies.</p>
         <div class="modal-actions"><button class="btn primary" data-m="ok">Close</button></div>`, { actions: { ok: (c) => c() } });
     },
@@ -501,6 +534,7 @@
     },
     quitToMenu() {
       document.getElementById('modal-root').innerHTML = '';
+      if (this.game && this.game.sim && this.game.sim.culture) this.game.sim.culture.debate = null;
       if (this.game) this.game.stop();
       this.game = null;
       this.show('screen-menu');

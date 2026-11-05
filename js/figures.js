@@ -129,6 +129,28 @@
         P.arms = [[-1.2, -1.5, -2, -5], [1.6, -1.5, 2.5, -5]];
         break;
       }
+      case 'aim': {
+        const draw = (Math.sin(t * 1.4 + (p.id % 7)) + 1) / 2;
+        P.legs = [[1.6, -6, 2.8, 0], [-1, -6, -1.8, 0]];
+        P.arms = [[2, 1.2, 4.6, 0.6], [1.4 - draw * 1.2, 1.8, 1.2 - draw * 1.6, 1.2]];
+        P.aim = draw;
+        break;
+      }
+      case 'talk': {
+        const g = Math.max(0, Math.sin(t * 2.2 + (p.id % 5)));
+        P.legs = [[0.6, -6, 1, 0], [-0.6, -6, -1, 0]];
+        P.arms = [[0.4, 4, 0.6, 8], [1.6, 2.4 - g * 2, 3 + g, 2 - g * 4]];
+        break;
+      }
+      case 'dance': {
+        const ph2 = t * 5 + (p.id % 9);
+        const step = Math.sin(ph2);
+        P.bob = -Math.abs(step) * 1.4;
+        P.lean = 0.12 + Math.max(0, step) * 0.12;
+        P.legs = [[step * 1.2, -6 - Math.max(0, step) * 1.5, step * 2, -Math.max(0, step) * 2], [-step * 0.6, -6, -1, 0]];
+        P.arms = [[-1.6, 2 - step, -3, 1 - step * 2], [1.8, 2 + step, 3.4, 1 + step * 2]];
+        break;
+      }
       default:
         P.legs = [[0.5, -6, 0.9, 0], [-0.5, -6, -0.9, 0]];
         P.arms = [[0.6, 4, 0.8, 8], [-0.4, 4, -0.2, 8]];
@@ -167,6 +189,10 @@
     }
     const P = pose(p, t);
     const O = outfit(p, season);
+    const adopted = (env.goods || 0) > (L.adopt === undefined ? 2 : L.adopt * 0.9);
+    const robeCol = adopted ? L.blanket : L.robe;
+    const shirtCol = adopted && p.role !== 'child' ? L.calico : cloth;
+    if (adopted && p.sex === 'M' && season !== 1 && p.role !== 'child') O.shirt = true;
     const detail = u * 25 > 34; // fine details only when figures are large on screen
     ctx.save();
     ctx.translate(x, y);
@@ -263,7 +289,7 @@
 
     // torso
     const tw = p.sex === 'F' ? 1.9 : 2.1;
-    const torsoCol = O.robe ? L.robe : O.shirt && !O.bareKid ? cloth : skin;
+    const torsoCol = O.robe ? robeCol : O.shirt && !O.bareKid ? shirtCol : skin;
     ctx.fillStyle = torsoCol;
     ctx.beginPath();
     ctx.moveTo(-tw * 0.85, hipY);
@@ -299,8 +325,8 @@
     // robe drapes over the shoulders
     if (O.robe) {
       const g = ctx.createLinearGradient(Sx - 4, Sy, Sx + 4, Sy);
-      g.addColorStop(0, sh(L.robe, 1.15));
-      g.addColorStop(1, sh(L.robe, 0.75));
+      g.addColorStop(0, sh(robeCol, 1.15));
+      g.addColorStop(1, sh(robeCol, 0.75));
       ctx.fillStyle = g;
       ctx.beginPath();
       ctx.moveTo(Sx - 2.8, Sy - 0.8);
@@ -309,8 +335,8 @@
       ctx.lineTo(P.sit ? -3.6 : -3.6, P.sit ? hipY + 3.4 : hipY + 6);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = sh(L.robe, 1.45);
-      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = adopted ? '#1e1a18' : sh(L.robe, 1.45);
+      ctx.lineWidth = adopted ? 1.3 : 0.9;
       ctx.beginPath();
       ctx.moveTo(-3.6, P.sit ? hipY + 3.4 : hipY + 6);
       ctx.lineTo(P.sit ? 5 : 3.8 + sl * 3, P.sit ? hipY + 3 : hipY + 5.5);
@@ -329,7 +355,7 @@
     const fax = Sx + fa[2], fay = Sy + fa[3];
     const fex = Sx + fa[0], fey = Sy + fa[1];
     drawTool(ctx, p, P, fax, fay, env);
-    seg(ctx, Sx + 0.6, Sy + 0.6, fex, fey, fax, fay, O.robe ? sh(L.robe, 0.95) : armCol, 1.45);
+    seg(ctx, Sx + 0.6, Sy + 0.6, fex, fey, fax, fay, O.robe ? sh(robeCol, 0.95) : adopted && O.shirt && season !== 1 ? sh(shirtCol, 0.9) : armCol, 1.45);
     if (detail) {
       ctx.fillStyle = skin;
       ell(ctx, fax, fay, 0.7, 0.7);
@@ -428,6 +454,51 @@
     const tool = p.tool;
     if (!tool || p.carry && (p.carry.kind === 'water' || p.carry.kind === 'fish')) return;
     if (p.anim === 'sit' || p.anim === 'tell') return;
+    if (tool === 'musket') {
+      const aim = p.anim === 'aim';
+      ctx.strokeStyle = '#3a2a1e';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      if (aim) { ctx.moveTo(hx - 3.5, hy + 0.8); ctx.lineTo(hx + 7, hy - 0.6); }
+      else { ctx.moveTo(hx - 1, hy + 3); ctx.lineTo(hx + 2.5, hy - 11); }
+      ctx.stroke();
+      ctx.strokeStyle = '#6a6a6a';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      if (aim) { ctx.moveTo(hx + 1, hy); ctx.lineTo(hx + 8.5, hy - 0.8); } else { ctx.moveTo(hx + 1.2, hy - 5); ctx.lineTo(hx + 2.8, hy - 12); }
+      ctx.stroke();
+      return;
+    }
+    if (tool === 'stick') {
+      ctx.strokeStyle = '#7a5a3a';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(hx - 1, hy - 3);
+      ctx.lineTo(hx + 3, hy + 6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(hx + 3.8, hy + 7, 1.3, Math.PI * 0.8, Math.PI * 2.1);
+      ctx.stroke();
+      return;
+    }
+    if (tool === 'bow' && p.anim === 'aim') {
+      const d = P.aim || 0;
+      ctx.strokeStyle = '#5a3a22';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(hx + 0.2, hy - 5);
+      ctx.quadraticCurveTo(hx + 2.6, hy, hx + 0.2, hy + 5);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(230,220,200,0.8)';
+      ctx.lineWidth = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(hx + 0.2, hy - 5); ctx.lineTo(hx - 1.4 - d * 2, hy); ctx.lineTo(hx + 0.2, hy + 5);
+      ctx.stroke();
+      ctx.strokeStyle = '#8a6a48';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(hx - 1.4 - d * 2, hy); ctx.lineTo(hx + 4.5, hy); ctx.stroke();
+      return;
+    }
     if (tool === 'bow') {
       ctx.strokeStyle = '#5a3a22';
       ctx.lineWidth = 0.8;
@@ -661,5 +732,5 @@
     }
   }
 
-  TM.Figures = { drawPerson, drawDog, drawDeer, drawBison, drawFlames };
+  TM.Figures = { drawPerson, drawDog, drawDeer, drawBison, drawFlames, pose, seg, ell };
 })();

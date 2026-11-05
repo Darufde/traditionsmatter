@@ -8,7 +8,7 @@
   const TM = window.TM;
   const { U, RNG, C } = TM;
 
-  const T = (TM.T = { PRAIRIE: 0, FOREST: 1, WATER: 2, SHALLOW: 3, BANK: 4, MARSH: 5, FIELD: 6, VILLAGE: 7, CAMP: 8 });
+  const T = (TM.T = { PRAIRIE: 0, FOREST: 1, WATER: 2, SHALLOW: 3, BANK: 4, MARSH: 5, FIELD: 6, VILLAGE: 7, CAMP: 8, COLFIELD: 9, PASTURE: 10, CLEARED: 11 });
 
   TM.BUILD_INFO = {
     wigwam: {
@@ -572,10 +572,11 @@
     const nearLanding = (x, y) => Math.hypot(x - landing.x, y - landing.y) < 4 || Math.abs(y + 0.5 - FY) < 3;
     function treeKind(x, y, t) {
       const cx = x + 0.5, cy = y + 0.5, r = rx(cy), ad = Math.abs(cx - r);
-      if (t === T.BANK) return rng.weighted([['willow', 0.7], ['cottonwood', 0.3]]);
-      if (ad < 7) return rng.weighted([['cottonwood', 0.35], ['elm', 0.3], ['willow', 0.15], ['maple', 0.2]]);
-      if (cx < r) return rng.weighted([['oak', 0.85], ['cedar', 0.15]]);
-      return rng.weighted([['oak', 0.28], ['maple', 0.24], ['hickory', 0.16], ['elm', 0.14], ['birch', 0.06], ['cedar', 0.06], ['pine', 0.06]]);
+      if (t === T.BANK) return rng.weighted([['willow', 0.6], ['cottonwood', 0.25], ['sycamore', 0.15]]);
+      if (ad < 7) return rng.weighted([['cottonwood', 0.3], ['elm', 0.2], ['willow', 0.12], ['maple', 0.13], ['sycamore', 0.17], ['basswood', 0.08]]);
+      if (cx < r) return rng.weighted([['oak', 0.8], ['cedar', 0.12], ['plum', 0.08]]);
+      if (wf[y * N + x] < 0.5) return rng.weighted([['oak', 0.35], ['plum', 0.15], ['hickory', 0.15], ['walnut', 0.12], ['cedar', 0.13], ['maple', 0.1]]);
+      return rng.weighted([['oak', 0.22], ['maple', 0.2], ['hickory', 0.13], ['elm', 0.1], ['basswood', 0.1], ['walnut', 0.08], ['birch', 0.05], ['cedar', 0.05], ['pine', 0.07]]);
     }
     const berrySpots = [];
     for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
@@ -604,9 +605,15 @@
         else if (rng.chance(0.03)) props.push({ kind: 'rock', x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 3) });
         continue;
       }
-      if (w > 0.25 && w < 0.65 && rng.chance(0.06)) {
-        props.push({ kind: 'berry', x: x + 0.5, y: y + 0.5, v: rng.int(0, 1) });
+      const riparian = Math.abs(x + 0.5 - rx(y + 0.5)) < 7;
+      if (w > 0.25 && w < 0.65 && rng.chance(0.07)) {
+        const sp = riparian ? rng.weighted([['elderberry', 0.5], ['raspberry', 0.3], ['chokecherry', 0.2]]) : rng.weighted([['raspberry', 0.45], ['chokecherry', 0.3], ['strawberry', 0.25]]);
+        props.push({ kind: 'berry', sp, x: x + 0.5, y: y + 0.5, v: rng.int(0, 1) });
         berrySpots.push(i);
+      } else if (w > 0.55 && rng.chance(0.22)) {
+        // forest floor: ferns, spring flowers and mushrooms
+        const sp = rng.weighted([['fern', 0.55], ['trillium', 0.18], ['mayapple', 0.17], ['mushroom', 0.1]]);
+        props.push({ kind: 'floor', sp, x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 2) });
       } else if (w > 0.3 && rng.chance(0.16)) {
         props.push({ kind: 'shrub', x: x + rng.range(0.3, 0.7), y: y + rng.range(0.3, 0.7), v: rng.int(0, 2) });
       } else if (w > 0.15 && w < 0.5 && rng.chance(0.05)) {
@@ -614,7 +621,11 @@
       } else if (w < 0.3) {
         const k = rng.next() < 0.55 ? rng.int(1, 2) : 0;
         for (let j = 0; j < k; j++) props.push({ kind: 'grass', x: x + rng.range(0.1, 0.9), y: y + rng.range(0.1, 0.9), v: rng.int(0, 3) });
-        if (rng.chance(0.09)) props.push({ kind: 'flowers', x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 2) });
+        if (rng.chance(0.11)) {
+          const sp = w > 0.12 ? rng.weighted([['bergamot', 0.3], ['aster', 0.25], ['goldenrod', 0.25], ['milkweed', 0.2]])
+            : rng.weighted([['pasque', 0.12], ['coneflower', 0.18], ['blackeyed', 0.15], ['blazingstar', 0.13], ['goldenrod', 0.12], ['aster', 0.08], ['milkweed', 0.08], ['turnip', 0.08], ['rose', 0.06]]);
+          props.push({ kind: 'flowers', sp, x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 2) });
+        }
       }
       if (rng.chance(0.005)) props.push({ kind: 'rock', x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 3) });
     }
@@ -634,9 +645,52 @@
       if (Math.hypot(x + 0.5 - CCX, y + 0.5 - CCY) > R + 1.5 && rng.chance(0.35)) props.push({ kind: 'grass', x: x + rng.range(0.1, 0.9), y: y + rng.range(0.1, 0.9), v: rng.int(0, 3) });
     }
 
+    // wild rice and water lilies in quiet water near the marsh, lodges of beaver along the banks
+    for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
+      const i = y * N + x;
+      if (type[i] !== T.WATER) continue;
+      const d = dd[i];
+      const nearMarsh = Math.hypot(x + 0.5 - MX, y + 0.5 - MY) < 10;
+      if (nearMarsh && d < 1.1 && rng.chance(0.55)) props.push({ kind: 'wildrice', x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 2) });
+      else if (d < 0.8 && (nearMarsh ? rng.chance(0.25) : rng.chance(0.025))) props.push({ kind: 'lily', x: x + rng.range(0.2, 0.8), y: y + rng.range(0.2, 0.8), v: rng.int(0, 2) });
+    }
+    const lodges = [];
+    for (let tries = 0; tries < 600 && lodges.length < 3; tries++) {
+      const y = rng.int(6, N - 7);
+      const r0 = rx(y + 0.5), w0 = rw(y + 0.5);
+      const side = rng.chance(0.5) ? -1 : 1;
+      const x = Math.floor(r0 + side * (w0 / 2 - 0.45));
+      const i = y * N + x;
+      if (type[i] !== T.WATER) continue;
+      if (Math.hypot(x - landing.x, y - landing.y) < 12 || Math.abs(y + 0.5 - FY) < 7) continue;
+      if (lodges.some((l) => Math.abs(l.y - y) < 12)) continue;
+      const lodge = { kind: 'beaverlodge', x: x + 0.5, y: y + 0.5, v: rng.int(0, 1) };
+      props.push(lodge);
+      lodges.push(lodge);
+    }
+    // sunflowers planted along the edges of the fields
+    for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
+      const i = y * N + x, t = type[i];
+      if (t === T.FIELD || t === T.WATER || t === T.SHALLOW || occ[i] >= 0 || reserved[i] || path[i] || fireTile[i] || treeTile[i]) continue;
+      let edge = false;
+      for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (type[(y + oy) * N + x + ox] === T.FIELD) edge = true;
+      if (edge && rng.chance(0.2)) props.push({ kind: 'sunflower', x: x + rng.range(0.3, 0.7), y: y + rng.range(0.3, 0.7), v: rng.int(0, 2) });
+    }
+
     // prop tiles that slow walkers (woodpiles etc.)
     for (const p of props) if (p.tile !== undefined) fireTile[p.tile] = 1;
     refreshCost();
+
+    // index trees and props by tile, so land can be cleared later
+    const treesAt = new Map(), propsAt = new Map();
+    const addAt = (m, o) => {
+      const t = Math.floor(o.y) * N + Math.floor(o.x);
+      o.tileIdx = t;
+      if (!m.has(t)) m.set(t, []);
+      m.get(t).push(o);
+    };
+    for (const t of trees) addAt(treesAt, t);
+    for (const p of props) if (p.kind !== 'weir') addAt(propsAt, p);
 
     // ---------------------------------------------------------------- work spots
     const isWalk = (i) => cost[i] !== Infinity;
@@ -706,15 +760,89 @@
       hh.fields = byDist(fieldTiles, b.cx, b.cy).slice(0, 14);
     }
 
+    // ---------------------------------------------------------------- habitats for wildlife
+    const hab = { forest: [], edge: [], prairie: [], water: [], bank: [], marsh: [], fields: fieldTiles.slice() };
+    for (let y = 2; y < N - 2; y++) for (let x = 2; x < N - 2; x++) {
+      const i = y * N + x, t = type[i];
+      if (t === T.WATER) { hab.water.push(i); continue; }
+      if (cost[i] === Infinity) continue;
+      const dv = Math.hypot(x + 0.5 - PCX, y + 0.5 - PCY), dc = Math.hypot(x + 0.5 - CCX, y + 0.5 - CCY);
+      if (dv < 13 || dc < 9) continue;
+      if (t === T.BANK) hab.bank.push(i);
+      else if (t === T.MARSH) hab.marsh.push(i);
+      else if (wf[i] > 0.65) hab.forest.push(i);
+      else if (wf[i] > 0.2) hab.edge.push(i);
+      else if (t === T.PRAIRIE) hab.prairie.push(i);
+    }
+
+    // ---------------------------------------------------------------- where newcomers would settle (east woods)
+    const KX = N - 17, KY = U.clamp(VY + rng.int(-8, 8), 22, N - 22);
+    const plan = { KX: KX + 0.5, KY: KY + 0.5, fort: { type: 'fort', x: KX - 3, y: KY - 3, w: 7, h: 7 } };
+    plan.post = { type: 'tradepost', x: KX - 9, y: KY - 1, w: 3, h: 3 };
+    plan.meeting = { type: 'meeting', x: KX + 5, y: KY - 6, w: 3, h: 4 };
+    const used = [plan.fort, plan.post, plan.meeting];
+    const overlaps = (a, m) => used.some((b) => a.x < b.x + b.w + m && a.x + a.w + m > b.x && a.y < b.y + b.h + m && a.y + a.h + m > b.y);
+    plan.cabins = [];
+    for (let r = 6; r < 18 && plan.cabins.length < 34; r += 1.5) {
+      const nA = Math.round(r * 1.5);
+      for (let k = 0; k < nA && plan.cabins.length < 34; k++) {
+        const a = (k / nA) * Math.PI * 2 + r;
+        const cx = Math.round(KX + Math.cos(a) * r - 1), cy = Math.round(KY + Math.sin(a) * r * 1.1 - 1);
+        const c = { type: 'cabin', x: cx, y: cy, w: 2, h: 2 };
+        if (cx < KX - 14 || cx + 2 > N - 3 || cy < 3 || cy + 2 > N - 3) continue;
+        if (overlaps(c, 1)) continue;
+        let ok = true;
+        for (let y = cy - 1; y < cy + 3 && ok; y++) for (let x = cx - 1; x < cx + 3; x++) {
+          const t = type[y * N + x];
+          if (t === T.WATER || t === T.SHALLOW || t === T.FIELD || t === T.VILLAGE || t === T.CAMP || occ[y * N + x] >= 0) { ok = false; break; }
+        }
+        if (!ok) continue;
+        plan.cabins.push(c);
+        used.push(c);
+      }
+    }
+    const inPlan = new Uint8Array(n);
+    for (const b of used) for (let y = b.y - 1; y < b.y + b.h + 1; y++) for (let x = b.x - 1; x < b.x + b.w + 1; x++) if (x >= 0 && y >= 0 && x < N && y < N) inPlan[y * N + x] = 1;
+    // the order in which the colony would clear land: outward from the fort, never onto our village or fields
+    const claimable = [];
+    for (let y = 2; y < N - 2; y++) for (let x = 2; x < N - 2; x++) {
+      const i = y * N + x, t = type[i];
+      if (t === T.WATER || t === T.SHALLOW || t === T.FIELD || t === T.VILLAGE || t === T.CAMP || t === T.MARSH) continue;
+      if (occ[i] >= 0 || reserved[i] || inPlan[i]) continue;
+      if (x + 0.5 < rx(y + 0.5) + 3) continue;
+      const dv = Math.hypot(x + 0.5 - PCX, y + 0.5 - PCY);
+      if (dv < 13) continue;
+      const d = Math.hypot(x + 0.5 - plan.KX, (y + 0.5 - plan.KY) * 1.15) + nz2.n2(x * 0.3 + 70, y * 0.3) * 7;
+      claimable.push([i, d]);
+    }
+    claimable.sort((a, b) => a[1] - b[1]);
+    plan.claimOrder = claimable.map((c) => c[0]);
+    plan.inPlan = inPlan;
+
+    // ---------------------------------------------------------------- where a palisade would stand
+    let maxD = 0;
+    for (const b of buildings) if (b.band === 'village' && b.type !== 'platform' && b.type !== 'rack' && b.type !== 'fishrack' && b.type !== 'sweat') maxD = Math.max(maxD, Math.hypot(b.cx - PCX, b.cy - PCY) + Math.max(b.w, b.h) / 2);
+    const palR = maxD + 1.8;
+    const palisade = [];
+    for (let y = 1; y < N - 1; y++) for (let x = 1; x < N - 1; x++) {
+      const i = y * N + x, t = type[i];
+      const d = Math.hypot(x + 0.5 - PCX, y + 0.5 - PCY);
+      if (Math.abs(d - palR) > 0.55) continue;
+      if (t === T.WATER || t === T.SHALLOW || t === T.FIELD || occ[i] >= 0 || path[i] || reserved[i] || fireTile[i]) continue;
+      palisade.push({ i, x: x + 0.5, y: y + 0.5, a: Math.atan2(y + 0.5 - PCY, x + 0.5 - PCX) });
+    }
+    palisade.sort((a, b) => a.a - b.a);
+
     const W = {
       N, seed, type, wf, dd, marsh: marshM, occ, cost, ground, path, treeTile, fireTile, reserved,
+      treesAt, propsAt, hab, plan, palisade, palR, MX, MY,
       rx, rw, rwBase, FY, VX, VY, PCX, PCY, CX, CY, CCX, CCY, campR: R,
       buildings, fires, props, trees,
       fields: fieldTiles.map((i) => ({ i, x: i % N, y: (i / N) | 0, rank: harvestRank.get(i), v: (i * 7) % 3 })),
       spots, landing, council: council ? council.id : -1,
       households, hhById,
       bisonRange: { x0: 3, x1: Math.max(8, CX - 9), y0: 8, y1: N - 8 },
-      refreshCost,
+      refreshCost, free, put, setDoor, dirsToward, walkableTile, inMap,
     };
     W.isWalk = (x, y) => x >= 0 && y >= 0 && x < N && y < N && cost[y * N + x] !== Infinity;
     return W;
