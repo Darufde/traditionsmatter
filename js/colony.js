@@ -126,12 +126,14 @@
       this.relations += 0.1 * cul.lean.newcomers.v - 0.1 * cul.lean.defense.v + (this.tradeAccess() > 0.5 ? 0.06 : -0.03) - this.pressure * 0.15;
       this.relations = U.clamp(this.relations, -100, 100);
       if (!this.war && this.relations < -55) this.startWar();
-      if (this.fear > 0.9 && this.pop < 48 && this.war && sim.day - this.foundedDay > 60 && rng.next() < 0.05) { this.abandon(); return; }
+      const warDays = this.war ? sim.day - this.warSince : 0;
+      const beaten = (this.fear > 0.9 && this.pop < 48) || (warDays > 150 && this.pop < 70 && this.fear > 0.45);
+      if (beaten && this.war && sim.day - this.foundedDay > 60 && rng.next() < 0.04) { this.abandon(); return; }
       this.growLand();
       this.growBuildings();
       this.syncAgents();
       // the colony strikes when at war
-      if (this.war && !this.militia && sim.day - this.lastMilitia > 9 && rng.next() < 0.06 * (this.pop / 60) * (1 - this.fear)) this.militiaRaid();
+      if (this.war && !this.militia && sim.day - this.lastMilitia > 9 && rng.next() < (0.04 + 0.04 * (this.pop / 60)) * (1 - this.fear)) this.militiaRaid();
       if (this.retaliateOn && sim.day >= this.retaliateOn && !this.militia) { this.retaliateOn = null; this.militiaRaid(); }
     }
 
@@ -464,7 +466,8 @@
       const sim = this.sim, W = this.W, rng = this.rng;
       const fort = this.buildings.find((b) => b.type === 'fort');
       if (!fort || !fort.door) return;
-      const n = U.clamp(Math.round(4 + this.pop * 0.06), 6, 22);
+      const warDays = this.war ? sim.day - this.warSince : 0;
+      const n = U.clamp(Math.round(6 + this.pop * 0.08 + warDays * 0.08), 6, 34);
       const ang = Math.atan2(fort.cy - W.PCY, fort.cx - W.PCX);
       const tx = W.PCX + Math.cos(ang) * (W.palR - 3), ty = W.PCY + Math.sin(ang) * (W.palR - 3);
       const m = { agents: [], resolved: false, n, target: { x: tx, y: ty } };
@@ -490,10 +493,10 @@
       if (m.resolved) return;
       m.resolved = true;
       const sim = this.sim, cul = sim.culture, rng = this.rng, W = this.W;
-      const defenders = this.warriors('village');
+      const defenders = this.warriors('village').filter((p) => Math.hypot(p.x - W.PCX, p.y - W.PCY) < 30);
       const guns = cul.flags.guns * this.tradeAccess();
       const def = defenders.length * (1 + cul.flags.palisade * 0.8 + 0.35 * guns + 0.15 * cul.lean.defense.v + (cul.flags.alliance ? 0.3 : 0)) * rng.range(0.7, 1.3);
-      const att = m.n * 1.6 * rng.range(0.8, 1.2);
+      const att = m.n * 2 * rng.range(0.8, 1.2);
       if (def > att) {
         this.fear = U.clamp(this.fear + 0.15, 0, 1);
         sim.emit('Our warriors drove the soldiers back from the village.', 'war');
@@ -503,8 +506,8 @@
         lodges.sort((a, b) => Math.hypot(a.cx - m.target.x, a.cy - m.target.y) - Math.hypot(b.cx - m.target.x, b.cy - m.target.y));
         const k = rng.int(1, 3);
         for (const b of lodges.slice(0, k)) { b.state = 'burning'; b.burnUntil = sim.day + 0.5; b.repair = 0; }
-        if (sim.crop.phase === 'growing' || sim.crop.phase === 'prep') sim.crop.condition = Math.max(0.05, sim.crop.condition - 0.15);
-        else for (const f of ['maize', 'meat', 'fish', 'wild']) sim.food[f] *= 0.88;
+        if (sim.crop.phase === 'growing' || sim.crop.phase === 'prep') sim.crop.condition = Math.max(0.05, sim.crop.condition - 0.1);
+        else for (const f of ['maize', 'meat', 'fish', 'wild']) sim.food[f] *= 0.92;
         sim.emit(`The soldiers broke into the village and burned ${k === 1 ? 'a lodge' : k + ' lodges'}.`, 'war');
         this.casualties(defenders, 0.16, 0.05, 'fell defending the village');
         this.attackedUs = true;

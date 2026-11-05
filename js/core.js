@@ -30,7 +30,7 @@
   TM.DIFFICULTY = {
     gentle:   { label: 'Gentle',   prod: 1.2,  cons: 0.9,  illness: 0.6, stores: 1.3,  wood: 0.85 },
     balanced: { label: 'Balanced', prod: 1.0,  cons: 1.0,  illness: 1.0, stores: 1.0,  wood: 1.0 },
-    harsh:    { label: 'Harsh',    prod: 0.9,  cons: 1.05, illness: 1.5, stores: 0.75, wood: 1.15 },
+    harsh:    { label: 'Harsh',    prod: 0.9,  cons: 1.05, illness: 1.4, stores: 0.8, wood: 1.05 },
   };
 
   // ---------------------------------------------------------------- math utils

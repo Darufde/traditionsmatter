@@ -547,6 +547,7 @@
       const fd = sim.foodTotal() / Math.max(1, sim.needPerDay());
       const target = 0.3 + 0.5 * this.T() + (fd > 6 ? 0.12 : -0.1) - (f.spirits ? 0.12 : 0) - (col && col.war ? 0.05 : 0) - (col ? col.recentLoss : 0);
       this.unity += U.clamp(target - this.unity, -0.03, 0.03);
+      if (col && col.war) this.unity -= 0.002;
       this.respect += 0.55 + 0.95 * this.T();
       // the palisade goes up while it is ordered
       if (f.palisadeOrdered && f.palisade < 1) f.palisade = Math.min(1, f.palisade + 0.004); // mostly raised by work in the village

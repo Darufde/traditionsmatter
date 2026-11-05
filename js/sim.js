@@ -447,8 +447,8 @@
       const infants = new Set();
       for (const p of this.people) if (p.role === 'infant' && p.age < 2) infants.add(p.carrier);
       for (const p of this.people.slice()) {
-        let d = hungry ? -6 : lean ? -1.5 : 3;
-        if (cold) d -= 7;
+        let d = hungry ? -4 : lean ? -1 : 3;
+        if (cold) d -= 4;
         if (this.day < this.culture.flags.ration) d -= 1;
         if (p.sick > 0) { d -= p.severe ? 8 : 3; p.sick = Math.max(0, p.sick - 1); if (p.sick === 0) { p.recovered = true; p.severe = false; } }
         if ((p.age > 65 || p.age < 3) && d < 0) d *= 1.4;
@@ -464,7 +464,7 @@
         // death
         let risk = 0;
         if (p.age > 60) risk += (p.age - 60) * 0.00022;
-        if (p.health < 25) risk += (25 - p.health) * 0.004;
+        if (p.health < 25) risk += (25 - p.health) * 0.002;
         if (p.sick > 0) risk += 0.0015 * diff.illness;
         if (p.severe) risk += (p.age < 3 || p.age > 60 ? 0.03 : 0.007) * diff.illness;
         if (p.health <= 0 || rng.next() < risk) { this.die(p); continue; }
@@ -830,6 +830,7 @@
         const urge = fdays < 3 ? 2.2 : 1.5;
         for (const w of W) {
           if (w[0] === 'hunt' || w[0] === 'fish' || w[0] === 'gather' || w[0] === 'farm' || w[0] === 'trap') w[1] *= urge;
+          else if (w[0] === 'wood' && woodDays < 3) w[1] *= 1.5;
           else if (w[0] === 'craft' || w[0] === 'wood' || w[0] === 'build' || w[0] === 'train' || w[0] === 'trade' || w[0] === 'hides') w[1] *= 0.5;
         }
         W.push(['fish', 0.15 * FISH_SEASON[s]], ['gather', 0.15 * GATHER_SEASON[s]]);
